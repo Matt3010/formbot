@@ -1,4 +1,4 @@
-import { Component, inject, input, OnInit, signal } from '@angular/core';
+import { Component, inject, input, output, OnInit, signal } from '@angular/core';
 import { DatePipe, UpperCasePipe } from '@angular/common';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
@@ -82,8 +82,13 @@ import { ScreenshotViewerComponent } from '../../shared/components/screenshot-vi
                       <mat-icon>photo_camera</mat-icon>
                     </button>
                   }
-                  @if (exec.vnc_session_id) {
-                    <button mat-icon-button matTooltip="VNC Session Available" color="warn">
+                  @if (exec.vnc_session_id && exec.status === 'waiting_manual') {
+                    <button mat-raised-button color="warn" matTooltip="Open VNC viewer"
+                      (click)="onOpenVnc(exec)">
+                      <mat-icon>desktop_windows</mat-icon> Connect VNC
+                    </button>
+                  } @else if (exec.vnc_session_id) {
+                    <button mat-icon-button matTooltip="VNC session (closed)" disabled>
                       <mat-icon>desktop_windows</mat-icon>
                     </button>
                   }
@@ -133,6 +138,7 @@ export class ExecutionLogComponent implements OnInit {
   private dialog = inject(MatDialog);
 
   taskId = input.required<string>();
+  openVnc = output<{ vncUrl: string; executionId: string }>();
   executions = signal<ExecutionLog[]>([]);
   loading = signal(true);
 
@@ -173,6 +179,16 @@ export class ExecutionLogComponent implements OnInit {
     const minutes = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${minutes}m ${secs}s`;
+  }
+
+  onOpenVnc(exec: ExecutionLog) {
+    // Extract VNC URL from the last step that has one
+    const vncStep = [...(exec.steps_log || [])].reverse().find(
+      (s: any) => s.vnc_url
+    );
+    if (vncStep?.vnc_url) {
+      this.openVnc.emit({ vncUrl: vncStep.vnc_url, executionId: exec.id });
+    }
   }
 
   viewScreenshot(path: string) {

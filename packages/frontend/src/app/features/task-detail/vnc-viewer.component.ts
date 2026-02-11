@@ -1,4 +1,5 @@
-import { Component, inject, input, output } from '@angular/core';
+import { Component, inject, input, output, computed } from '@angular/core';
+import { DomSanitizer } from '@angular/platform-browser';
 import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -24,7 +25,7 @@ import { NotificationService } from '../../core/services/notification.service';
       <mat-card-content>
         <div class="vnc-container">
           <iframe
-            [src]="vncUrl()"
+            [src]="safeVncUrl()"
             class="vnc-iframe"
             frameborder="0"
             allow="clipboard-read; clipboard-write"
@@ -61,10 +62,15 @@ import { NotificationService } from '../../core/services/notification.service';
 export class VncViewerComponent {
   private api = inject(ApiService);
   private notify = inject(NotificationService);
+  private sanitizer = inject(DomSanitizer);
 
   vncUrl = input.required<string>();
   executionId = input.required<string>();
   resumed = output<void>();
+
+  safeVncUrl = computed(() =>
+    this.sanitizer.bypassSecurityTrustResourceUrl(this.vncUrl())
+  );
 
   onResume() {
     this.api.post(`/executions/${this.executionId()}/resume`).subscribe({

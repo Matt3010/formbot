@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, inject, OnInit, OnDestroy, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { DatePipe, UpperCasePipe } from '@angular/common';
 import { MatCardModule } from '@angular/material/card';
@@ -158,7 +158,10 @@ import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog.c
 
           <mat-tab label="Executions">
             <div class="tab-content">
-              <app-execution-log [taskId]="task()!.id" />
+              <app-execution-log
+                [taskId]="task()!.id"
+                (openVnc)="onOpenVnc($event)"
+              />
             </div>
           </mat-tab>
         </mat-tab-group>
@@ -184,7 +187,7 @@ import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog.c
     .status-failed { background-color: #f44336 !important; color: white !important; }
   `]
 })
-export class TaskDetailComponent implements OnInit {
+export class TaskDetailComponent implements OnInit, OnDestroy {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private taskService = inject(TaskService);
@@ -196,11 +199,17 @@ export class TaskDetailComponent implements OnInit {
   vncUrl = signal<string | null>(null);
   vncExecutionId = signal<string | null>(null);
 
+  private pollTimer: ReturnType<typeof setInterval> | null = null;
+
   ngOnInit() {
     const id = this.route.snapshot.paramMap.get('id');
     if (id) {
       this.loadTask(id);
     }
+  }
+
+  ngOnDestroy() {
+    this.stopPolling();
   }
 
   loadTask(id: string) {
@@ -219,13 +228,11 @@ export class TaskDetailComponent implements OnInit {
 
   execute() {
     this.taskService.executeTask(this.task()!.id).subscribe({
-      next: (res) => {
+      next: () => {
         this.notify.success('Execution started');
-        if (res.vnc_url) {
-          this.vncUrl.set(res.vnc_url);
-          this.vncExecutionId.set(res.execution_id);
-        }
         this.loadTask(this.task()!.id);
+        // Start polling for VNC (execution runs async in background)
+        this.startPolling();
       },
       error: () => this.notify.error('Failed to start execution')
     });
@@ -306,5 +313,63 @@ export class TaskDetailComponent implements OnInit {
     this.vncUrl.set(null);
     this.vncExecutionId.set(null);
     this.loadTask(this.task()!.id);
+  }
+
+  onOpenVnc(event: { vncUrl: string; executionId: string }) {
+    this.vncUrl.set(event.vncUrl);
+    this.vncExecutionId.set(event.executionId);
+    // Scroll to top where VNC viewer is rendered
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  private startPolling() {
+    this.stopPolling();
+    let attempts = 0;
+    this.pollTimer = setInterval(() => {
+      attempts++;
+      // Stop after 2 minutes (40 attempts * 3s)
+      if (attempts > 40) {
+        this.stopPolling();
+        return;
+      }
+      this.checkForVnc();
+    }, 3000);
+  }
+
+  private stopPolling() {
+    if (this.pollTimer) {
+      clearInterval(this.pollTimer);
+      this.pollTimer = null;
+    }
+  }
+
+  private checkForVnc() {
+    const taskId = this.task()?.id;
+    if (!taskId) return;
+
+    this.taskService.getExecutions(taskId).subscribe({
+      next: (res) => {
+        const waiting = res.data?.find(
+          (e: any) => e.status === 'waiting_manual' && e.steps_log?.length
+        );
+        if (waiting) {
+          // Extract VNC URL from the last step with a vnc_url
+          const vncStep = [...(waiting.steps_log || [])].reverse().find(
+            (s: any) => s.vnc_url
+          );
+          if (vncStep?.vnc_url) {
+            this.vncUrl.set(vncStep.vnc_url);
+            this.vncExecutionId.set(waiting.id);
+            this.stopPolling();
+          }
+        }
+        // Also stop polling if execution completed
+        const latest = res.data?.[0];
+        if (latest && ['success', 'failed', 'dry_run_ok'].includes(latest.status)) {
+          this.stopPolling();
+          this.loadTask(taskId);
+        }
+      }
+    });
   }
 }

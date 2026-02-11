@@ -59,14 +59,8 @@ class TaskExecutor:
             await browser.close()
             return False
 
-        # User resumed - kill VNC viewer processes but keep Xvfb (browser still needs it)
-        session = self.vnc_manager.sessions.get(session_id)
-        if session:
-            self.vnc_manager._kill_proc(session.get("x11vnc_proc"))
-            self.vnc_manager._kill_proc(session.get("websockify_proc"))
-            session["x11vnc_proc"] = None
-            session["websockify_proc"] = None
-            session["status"] = "reserved"
+        # User resumed - kill x11vnc and revoke token, keep Xvfb (browser still needs it)
+        self.vnc_manager.deactivate_vnc(session_id)
 
         step_info["status"] = f"{reason}_resolved"
         execution.status = 'running'
