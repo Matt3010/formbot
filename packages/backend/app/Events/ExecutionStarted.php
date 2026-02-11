@@ -34,6 +34,11 @@ class ExecutionStarted implements ShouldBroadcast
         ];
     }
 
+    public function broadcastAs(): string
+    {
+        return 'ExecutionStarted';
+    }
+
     /**
      * Get the data to broadcast.
      */

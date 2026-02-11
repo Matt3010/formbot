@@ -1,21 +1,62 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, inject, signal, NgZone, effect } from '@angular/core';
 import { AuthService } from './auth.service';
 import { Subject, Observable } from 'rxjs';
 import Pusher from 'pusher-js';
 
+export interface ExecutionProgress {
+  execution_id: string;
+  task_id: string;
+  status: string;
+  step?: number;
+  total_steps?: number;
+  page_url?: string;
+  form_type?: string;
+  field_name?: string;
+  field_type?: string;
+  is_dry_run?: boolean;
+  error?: string;
+  screenshot?: string;
+  started_at?: string;
+}
+
+export interface WaitingManualEvent {
+  execution_id: string;
+  task_id: string;
+  status: string;
+  reason: string;
+  vnc_session_id: string;
+  vnc_url: string;
+  ws_port?: number;
+}
+
+export interface AiThinkingEvent {
+  analysis_id: string;
+  token: string;
+  done: boolean;
+}
+
 @Injectable({ providedIn: 'root' })
 export class WebSocketService {
   private auth = inject(AuthService);
+  private zone = inject(NgZone);
   private pusher: any = null;
+  private subscribedChannels = new Map<string, any>();
 
   taskUpdated$ = new Subject<any>();
+  taskDeleted$ = new Subject<any>();
   executionUpdate$ = new Subject<any>();
+  executionProgress$ = new Subject<ExecutionProgress>();
+  executionWaitingManual$ = new Subject<WaitingManualEvent>();
   captchaDetected$ = new Subject<any>();
   analysisCompleted$ = new Subject<any>();
+  aiThinking$ = new Subject<AiThinkingEvent>();
   connected = signal(false);
+  connectionState = signal<string>('disconnected');
 
   connect() {
     if (this.pusher) return;
+
+    const token = this.auth.getToken();
 
     try {
       this.pusher = new Pusher('formbot-key', {
@@ -25,21 +66,124 @@ export class WebSocketService {
         forceTLS: false,
         disableStats: true,
         enabledTransports: ['ws'],
+        authEndpoint: '/api/broadcasting/auth',
+        auth: {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/json',
+          }
+        },
       });
+
+      // Connection state monitoring
+      this.pusher.connection.bind('state_change', (states: { current: string; previous: string }) => this.zone.run(() => {
+        this.connectionState.set(states.current);
+        this.connected.set(states.current === 'connected');
+      }));
+
+      this.pusher.connection.bind('connected', () => this.zone.run(() => {
+        this.connected.set(true);
+        this.connectionState.set('connected');
+      }));
+
+      this.pusher.connection.bind('disconnected', () => this.zone.run(() => {
+        this.connected.set(false);
+        this.connectionState.set('disconnected');
+      }));
 
       const user = this.auth.user();
       if (user) {
-        const channel = this.pusher.subscribe(`private-tasks.${user.id}`);
-        channel.bind('TaskStatusChanged', (data: any) => this.taskUpdated$.next(data));
-        channel.bind('ExecutionStarted', (data: any) => this.executionUpdate$.next(data));
-        channel.bind('ExecutionCompleted', (data: any) => this.executionUpdate$.next(data));
-        channel.bind('CaptchaDetected', (data: any) => this.captchaDetected$.next(data));
+        this.subscribeToUserChannel(user.id);
+      } else {
+        // User not loaded yet (page refresh) - load user then subscribe
+        this.auth.loadUser().subscribe({
+          next: (u) => {
+            if (u) this.subscribeToUserChannel(u.id);
+          }
+        });
       }
-
-      this.connected.set(true);
     } catch (e) {
       console.warn('WebSocket connection failed:', e);
     }
+  }
+
+  private subscribeToUserChannel(userId: number) {
+    const channelName = `private-tasks.${userId}`;
+    if (this.subscribedChannels.has(channelName)) return;
+
+    const channel = this.pusher.subscribe(channelName);
+    this.subscribedChannels.set(channelName, channel);
+
+    channel.bind('TaskStatusChanged', (data: any) => this.zone.run(() => {
+      if (data.status === 'deleted') {
+        this.taskDeleted$.next(data);
+      } else {
+        this.taskUpdated$.next(data);
+      }
+    }));
+    channel.bind('ExecutionStarted', (data: any) => this.zone.run(() => {
+      this.executionUpdate$.next(data);
+      this.executionProgress$.next({ ...data, status: data.status || 'running' });
+    }));
+    channel.bind('ExecutionCompleted', (data: any) => this.zone.run(() => this.executionUpdate$.next(data)));
+    channel.bind('CaptchaDetected', (data: any) => this.zone.run(() => this.captchaDetected$.next(data)));
+
+    // Python-originated execution events
+    channel.bind('execution.started', (data: any) => this.zone.run(() => this.executionProgress$.next(data)));
+    channel.bind('execution.step_started', (data: any) => this.zone.run(() => this.executionProgress$.next(data)));
+    channel.bind('execution.step_completed', (data: any) => this.zone.run(() => this.executionProgress$.next(data)));
+    channel.bind('execution.field_filled', (data: any) => this.zone.run(() => this.executionProgress$.next(data)));
+    channel.bind('execution.completed', (data: any) => this.zone.run(() => {
+      this.executionProgress$.next(data);
+      this.executionUpdate$.next(data);
+    }));
+    channel.bind('execution.failed', (data: any) => this.zone.run(() => {
+      this.executionProgress$.next(data);
+      this.executionUpdate$.next(data);
+    }));
+    channel.bind('execution.waiting_manual', (data: any) => this.zone.run(() => {
+      this.executionProgress$.next(data);
+      this.executionWaitingManual$.next(data as WaitingManualEvent);
+    }));
+    channel.bind('execution.resumed', (data: any) => this.zone.run(() => this.executionProgress$.next(data)));
+  }
+
+  /**
+   * Subscribe to execution-specific channel for detailed progress.
+   */
+  subscribeToExecution(executionId: string): void {
+    const channelName = `private-execution.${executionId}`;
+    if (this.subscribedChannels.has(channelName)) return;
+    if (!this.pusher) this.connect();
+
+    const channel = this.pusher.subscribe(channelName);
+    this.subscribedChannels.set(channelName, channel);
+
+    const events = [
+      'execution.started', 'execution.step_started', 'execution.step_completed',
+      'execution.field_filled', 'execution.completed', 'execution.failed',
+      'execution.waiting_manual', 'execution.resumed',
+    ];
+
+    for (const event of events) {
+      channel.bind(event, (data: any) => this.zone.run(() => {
+        this.executionProgress$.next(data);
+        if (event === 'execution.waiting_manual') {
+          this.executionWaitingManual$.next(data as WaitingManualEvent);
+        }
+        if (event === 'execution.completed' || event === 'execution.failed') {
+          this.executionUpdate$.next(data);
+        }
+      }));
+    }
+  }
+
+  /**
+   * Unsubscribe from an execution channel.
+   */
+  unsubscribeFromExecution(executionId: string): void {
+    const channelName = `private-execution.${executionId}`;
+    this.unsubscribeChannel(channelName);
   }
 
   /**
@@ -55,27 +199,68 @@ export class WebSocketService {
 
       const channelName = `analysis.${analysisId}`;
       const channel = this.pusher.subscribe(channelName);
+      this.subscribedChannels.set(channelName, channel);
 
-      channel.bind('AnalysisCompleted', (data: any) => {
+      channel.bind('AnalysisCompleted', (data: any) => this.zone.run(() => {
         subscriber.next(data);
         subscriber.complete();
-        this.pusher.unsubscribe(channelName);
-      });
+        this.unsubscribeChannel(channelName);
+      }));
 
       // Cleanup on unsubscribe
       return () => {
+        this.unsubscribeChannel(channelName);
+      };
+    });
+  }
+
+  /**
+   * Subscribe to AI thinking tokens for a specific analysis.
+   * Returns an Observable that emits AiThinkingEvent objects.
+   */
+  subscribeToAnalysis(analysisId: string): Observable<AiThinkingEvent> {
+    return new Observable(subscriber => {
+      if (!this.pusher) {
+        this.connect();
+      }
+
+      const channelName = `analysis.${analysisId}`;
+      let channel = this.subscribedChannels.get(channelName);
+      if (!channel) {
+        channel = this.pusher.subscribe(channelName);
+        this.subscribedChannels.set(channelName, channel);
+      }
+
+      channel.bind('AiThinking', (data: AiThinkingEvent) => this.zone.run(() => {
+        this.aiThinking$.next(data);
+        subscriber.next(data);
+        if (data.done) {
+          subscriber.complete();
+        }
+      }));
+
+      return () => {
         try {
-          this.pusher?.unsubscribe(channelName);
+          channel?.unbind('AiThinking');
         } catch {}
       };
     });
   }
 
+  private unsubscribeChannel(channelName: string) {
+    try {
+      this.pusher?.unsubscribe(channelName);
+      this.subscribedChannels.delete(channelName);
+    } catch {}
+  }
+
   disconnect() {
     if (this.pusher) {
+      this.subscribedChannels.clear();
       this.pusher.disconnect();
       this.pusher = null;
       this.connected.set(false);
+      this.connectionState.set('disconnected');
     }
   }
 }

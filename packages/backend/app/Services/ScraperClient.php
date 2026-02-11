@@ -19,12 +19,16 @@ class ScraperClient
     /**
      * Analyze a URL to detect forms using the Python scraper service.
      */
-    public function analyze(string $url, ?string $model = null): array
+    public function analyze(string $url, ?string $model = null, ?string $analysisId = null): array
     {
         $payload = ['url' => $url];
 
         if ($model) {
             $payload['ollama_model'] = $model;
+        }
+
+        if ($analysisId) {
+            $payload['analysis_id'] = $analysisId;
         }
 
         $response = Http::timeout($this->timeout)

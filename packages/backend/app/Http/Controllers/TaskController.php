@@ -77,6 +77,8 @@ class TaskController extends Controller
 
         $task->load('formDefinitions.formFields');
 
+        event(new TaskStatusChanged($task));
+
         return response()->json(new TaskResource($task), 201);
     }
 
@@ -127,6 +129,8 @@ class TaskController extends Controller
 
         $task->load('formDefinitions.formFields');
 
+        event(new TaskStatusChanged($task));
+
         return new TaskResource($task);
     }
 
@@ -136,6 +140,10 @@ class TaskController extends Controller
     public function destroy(Task $task): JsonResponse
     {
         $this->authorizeTask($task);
+
+        $task->status = 'deleted';
+        event(new TaskStatusChanged($task));
+
         $task->delete();
 
         return response()->json(['message' => 'Task deleted successfully.']);
@@ -175,6 +183,8 @@ class TaskController extends Controller
 
         $newTask->load('formDefinitions.formFields');
 
+        event(new TaskStatusChanged($newTask));
+
         return response()->json(new TaskResource($newTask), 201);
     }
 
@@ -212,6 +222,8 @@ class TaskController extends Controller
         $this->authorizeTask($task);
 
         ExecuteTaskJob::dispatch($task, false);
+
+        event(new TaskStatusChanged($task));
 
         return response()->json(['message' => 'Task execution queued.']);
     }

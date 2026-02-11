@@ -1,4 +1,4 @@
-import { Component, computed, inject, OnInit, signal } from '@angular/core';
+import { Component, computed, inject, OnInit, OnDestroy, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -8,8 +8,10 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatDialog } from '@angular/material/dialog';
+import { Subscription } from 'rxjs';
 import { TaskService } from '../../core/services/task.service';
 import { NotificationService } from '../../core/services/notification.service';
+import { WebSocketService } from '../../core/services/websocket.service';
 import { Task } from '../../core/models/task.model';
 import { TaskCardComponent } from './task-card.component';
 import { StatsPanelComponent } from './stats-panel.component';
@@ -118,11 +120,13 @@ import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog.c
     .filter-search { flex: 1; }
   `]
 })
-export class DashboardComponent implements OnInit {
+export class DashboardComponent implements OnInit, OnDestroy {
   private taskService = inject(TaskService);
   private router = inject(Router);
   private notify = inject(NotificationService);
   private dialog = inject(MatDialog);
+  private ws = inject(WebSocketService);
+  private subs: Subscription[] = [];
 
   tasks = signal<Task[]>([]);
   loading = signal(true);
@@ -147,6 +151,45 @@ export class DashboardComponent implements OnInit {
 
   ngOnInit() {
     this.loadTasks();
+    this.ws.connect();
+
+    // Real-time task updates
+    this.subs.push(
+      this.ws.taskUpdated$.subscribe(data => {
+        this.tasks.update(tasks => {
+          const idx = tasks.findIndex(t => t.id === data.id);
+          if (idx !== -1) {
+            const updated = { ...tasks[idx], status: data.status, updated_at: data.updated_at || new Date().toISOString() };
+            if (data.name) updated.name = data.name;
+            return [...tasks.slice(0, idx), updated, ...tasks.slice(idx + 1)];
+          }
+          // New task (e.g. clone) - reload to get full data
+          this.loadTasks();
+          return tasks;
+        });
+      })
+    );
+
+    // Real-time task deletions
+    this.subs.push(
+      this.ws.taskDeleted$.subscribe(data => {
+        this.tasks.update(tasks => tasks.filter(t => t.id !== data.id));
+      })
+    );
+
+    // Real-time execution updates (update task status when execution completes)
+    this.subs.push(
+      this.ws.executionProgress$.subscribe(data => {
+        if (data.status === 'success' || data.status === 'failed' || data.status === 'dry_run_ok') {
+          // Reload task to get updated status
+          this.loadTasks();
+        }
+      })
+    );
+  }
+
+  ngOnDestroy() {
+    this.subs.forEach(s => s.unsubscribe());
   }
 
   loadTasks() {
@@ -179,7 +222,6 @@ export class DashboardComponent implements OnInit {
     this.taskService.executeTask(task.id).subscribe({
       next: () => {
         this.notify.success(`Task "${task.name}" execution started`);
-        this.loadTasks();
       },
       error: () => this.notify.error('Failed to execute task')
     });
@@ -189,7 +231,6 @@ export class DashboardComponent implements OnInit {
     this.taskService.pauseTask(task.id).subscribe({
       next: () => {
         this.notify.success(`Task "${task.name}" paused`);
-        this.loadTasks();
       },
       error: () => this.notify.error('Failed to pause task')
     });
@@ -199,7 +240,6 @@ export class DashboardComponent implements OnInit {
     this.taskService.cloneTask(task.id).subscribe({
       next: (res) => {
         this.notify.success(`Task cloned as "${res.data.name}"`);
-        this.loadTasks();
       },
       error: () => this.notify.error('Failed to clone task')
     });
@@ -218,7 +258,6 @@ export class DashboardComponent implements OnInit {
         this.taskService.deleteTask(task.id).subscribe({
           next: () => {
             this.notify.success('Task deleted');
-            this.loadTasks();
           },
           error: () => this.notify.error('Failed to delete task')
         });

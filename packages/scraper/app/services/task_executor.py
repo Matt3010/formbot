@@ -8,6 +8,7 @@ from app.config import settings
 from app.services.stealth import apply_stealth
 from app.services.ollama_client import OllamaClient
 from app.services.vnc_manager import VNCManager
+from app.services.broadcaster import Broadcaster
 from app.prompts.captcha_detection import CAPTCHA_DETECTION_PROMPT
 from app.models.task import Task
 from app.models.form_definition import FormDefinition
@@ -21,6 +22,12 @@ class TaskExecutor:
         self.db = db
         self.vnc_manager = vnc_manager or VNCManager()
         self.ollama = OllamaClient()
+        self.broadcaster = Broadcaster.get_instance()
+
+    def _broadcast(self, event: str, data: dict):
+        """Broadcast an execution event if user_id and execution are available."""
+        if hasattr(self, '_user_id') and self._user_id and hasattr(self, '_execution_id') and self._execution_id:
+            self.broadcaster.trigger_execution(self._user_id, str(self._execution_id), event, data)
 
     async def _vnc_pause(self, execution, steps_log, step_info, reason: str, browser) -> bool:
         """Activate VNC viewer and wait for user to resume.
@@ -47,6 +54,16 @@ class TaskExecutor:
         execution.steps_log = steps_log
         self.db.commit()
 
+        # Broadcast waiting_manual event
+        self._broadcast("execution.waiting_manual", {
+            "task_id": str(execution.task_id),
+            "status": "waiting_manual",
+            "reason": reason,
+            "vnc_session_id": session_id,
+            "vnc_url": vnc_result.get("vnc_url"),
+            "ws_port": vnc_result.get("ws_port"),
+        })
+
         # WAIT for user to complete manual action and click resume
         resumed = await self.vnc_manager.wait_for_resume(session_id, timeout=3600)
 
@@ -56,6 +73,13 @@ class TaskExecutor:
             execution.completed_at = datetime.utcnow()
             execution.steps_log = steps_log
             self.db.commit()
+
+            self._broadcast("execution.failed", {
+                "task_id": str(execution.task_id),
+                "status": "failed",
+                "error": execution.error_message,
+            })
+
             await browser.close()
             return False
 
@@ -69,6 +93,13 @@ class TaskExecutor:
         # Replace the waiting_manual entry with updated step info
         steps_log[-1] = step_info
 
+        # Broadcast resumed event
+        self._broadcast("execution.resumed", {
+            "task_id": str(execution.task_id),
+            "status": "running",
+            "reason": reason,
+        })
+
         return True
 
     async def execute(self, task_id: str, execution_id: str = None,
@@ -80,6 +111,9 @@ class TaskExecutor:
         task = self.db.query(Task).filter(Task.id == task_id).first()
         if not task:
             raise ValueError(f"Task {task_id} not found")
+
+        # Store user_id for broadcasting
+        self._user_id = task.user_id
 
         # Use existing execution record (created by Laravel) or create new one
         if execution_id:
@@ -102,6 +136,16 @@ class TaskExecutor:
             )
             self.db.add(execution)
             self.db.commit()
+
+        self._execution_id = str(execution.id)
+
+        # Broadcast execution started
+        self._broadcast("execution.started", {
+            "task_id": str(task.id),
+            "status": "running",
+            "is_dry_run": is_dry_run,
+            "started_at": datetime.utcnow().isoformat(),
+        })
 
         steps_log = []
 
@@ -154,6 +198,15 @@ class TaskExecutor:
                         "status": "started",
                         "timestamp": datetime.utcnow().isoformat()
                     }
+
+                    # Broadcast step started
+                    self._broadcast("execution.step_started", {
+                        "task_id": str(task.id),
+                        "step": form_def.step_order,
+                        "total_steps": len(form_defs),
+                        "page_url": form_def.page_url,
+                        "form_type": form_def.form_type,
+                    })
 
                     # Navigate to page
                     await page.goto(form_def.page_url, wait_until="networkidle", timeout=30000)
@@ -226,6 +279,14 @@ class TaskExecutor:
                             # Wait between actions
                             await page.wait_for_timeout(action_delay_ms)
 
+                            # Broadcast field filled
+                            self._broadcast("execution.field_filled", {
+                                "task_id": str(task.id),
+                                "step": form_def.step_order,
+                                "field_name": field.field_name,
+                                "field_type": field.field_type,
+                            })
+
                         except Exception as e:
                             step_info[f"field_{field.field_name}_error"] = str(e)
 
@@ -246,6 +307,12 @@ class TaskExecutor:
                         execution.steps_log = steps_log
                         self.db.commit()
 
+                        self._broadcast("execution.completed", {
+                            "task_id": str(task.id),
+                            "status": "dry_run_ok",
+                            "screenshot": screenshot_name,
+                        })
+
                         await browser.close()
                         return {
                             "execution_id": str(execution.id),
@@ -264,6 +331,14 @@ class TaskExecutor:
                         step_info["error"] = str(e)
 
                     steps_log.append(step_info)
+
+                    # Broadcast step completed
+                    self._broadcast("execution.step_completed", {
+                        "task_id": str(task.id),
+                        "step": form_def.step_order,
+                        "total_steps": len(form_defs),
+                        "status": step_info["status"],
+                    })
 
                     # Post-submit VNC pause: 2FA (user enters OTP/code after login submit)
                     if form_def.two_factor_expected:
@@ -303,6 +378,12 @@ class TaskExecutor:
             execution.steps_log = steps_log
             self.db.commit()
 
+            self._broadcast("execution.completed", {
+                "task_id": str(task.id),
+                "status": "success",
+                "screenshot": screenshot_name,
+            })
+
             return {
                 "execution_id": str(execution.id),
                 "status": "success",
@@ -316,6 +397,12 @@ class TaskExecutor:
             execution.completed_at = datetime.utcnow()
             execution.steps_log = steps_log
             self.db.commit()
+
+            self._broadcast("execution.failed", {
+                "task_id": str(task.id),
+                "status": "failed",
+                "error": str(e),
+            })
 
             return {
                 "execution_id": str(execution.id),

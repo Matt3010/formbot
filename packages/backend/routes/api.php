@@ -1,11 +1,15 @@
 <?php
 
+use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\AnalyzerController;
 use App\Http\Controllers\ExecutionController;
 use App\Http\Controllers\SettingsController;
+
+// Broadcast auth route for private WebSocket channels
+Broadcast::routes(['middleware' => ['auth:api'], 'prefix' => '']);
 
 // Public routes
 Route::post('/register', [AuthController::class, 'register']);

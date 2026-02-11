@@ -33,6 +33,11 @@ class TaskStatusChanged implements ShouldBroadcast
         ];
     }
 
+    public function broadcastAs(): string
+    {
+        return 'TaskStatusChanged';
+    }
+
     /**
      * Get the data to broadcast.
      */

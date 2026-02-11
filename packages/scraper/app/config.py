@@ -12,6 +12,13 @@ class Settings(BaseSettings):
     screenshot_dir: str = "/app/screenshots"
     upload_dir: str = "/app/uploads"
 
+    # Pusher/Soketi config for broadcasting
+    pusher_app_id: str = "100001"
+    pusher_app_key: str = "formbot-key"
+    pusher_app_secret: str = "formbot-secret"
+    pusher_host: str = "websocket"
+    pusher_port: int = 6001
+
     class Config:
         env_file = ".env"
 

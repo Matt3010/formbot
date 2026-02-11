@@ -1,4 +1,4 @@
-import { Component, inject, input, output, OnInit, signal } from '@angular/core';
+import { Component, inject, input, output, OnInit, OnChanges, SimpleChanges, signal } from '@angular/core';
 import { DatePipe, UpperCasePipe } from '@angular/common';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
@@ -9,6 +9,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { TaskService } from '../../core/services/task.service';
 import { ExecutionLog } from '../../core/models/execution-log.model';
+import { ExecutionProgress } from '../../core/services/websocket.service';
 import { ScreenshotViewerComponent } from '../../shared/components/screenshot-viewer.component';
 
 @Component({
@@ -41,7 +42,11 @@ import { ScreenshotViewerComponent } from '../../shared/components/screenshot-vi
               <mat-card-content>
                 <div class="flex items-center justify-between">
                   <div class="flex items-center gap-2">
-                    <mat-icon [class]="'status-icon ' + exec.status">{{ getStatusIcon(exec.status) }}</mat-icon>
+                    @if (exec.status === 'running' || exec.status === 'queued') {
+                      <mat-spinner diameter="20"></mat-spinner>
+                    } @else {
+                      <mat-icon [class]="'status-icon ' + exec.status">{{ getStatusIcon(exec.status) }}</mat-icon>
+                    }
                     <div>
                       <mat-chip [class]="'status-' + exec.status" class="status-chip">
                         {{ exec.status | uppercase }}
@@ -133,17 +138,65 @@ import { ScreenshotViewerComponent } from '../../shared/components/screenshot-vi
     .duration { display: block; font-weight: 500; }
   `]
 })
-export class ExecutionLogComponent implements OnInit {
+export class ExecutionLogComponent implements OnInit, OnChanges {
   private taskService = inject(TaskService);
   private dialog = inject(MatDialog);
 
   taskId = input.required<string>();
+  liveUpdate = input<ExecutionProgress | null>(null);
   openVnc = output<{ vncUrl: string; executionId: string }>();
   executions = signal<ExecutionLog[]>([]);
   loading = signal(true);
 
   ngOnInit() {
     this.loadExecutions();
+  }
+
+  ngOnChanges(changes: SimpleChanges) {
+    if (changes['liveUpdate'] && this.liveUpdate()) {
+      this.handleLiveUpdate(this.liveUpdate()!);
+    }
+  }
+
+  private handleLiveUpdate(data: ExecutionProgress) {
+    const execId = data.execution_id;
+    if (!execId) return;
+
+    this.executions.update(execs => {
+      const idx = execs.findIndex(e => e.id === execId);
+      if (idx !== -1) {
+        // Update existing execution in-place
+        const updated = { ...execs[idx] };
+        if (data.status === 'success' || data.status === 'failed' || data.status === 'dry_run_ok') {
+          updated.status = data.status as any;
+          updated.completed_at = new Date().toISOString();
+          if (data.error) updated.error_message = data.error;
+          if (data.screenshot) updated.screenshot_path = data.screenshot;
+        } else if (data.status === 'waiting_manual') {
+          updated.status = 'waiting_manual';
+        } else if (data.status === 'running') {
+          updated.status = 'running';
+        }
+        return [...execs.slice(0, idx), updated, ...execs.slice(idx + 1)];
+      } else {
+        // New execution - add to front of list
+        const newExec: ExecutionLog = {
+          id: execId,
+          task_id: data.task_id,
+          started_at: data.started_at || new Date().toISOString(),
+          completed_at: null,
+          status: (data.status as any) || 'running',
+          is_dry_run: data.is_dry_run || false,
+          retry_count: 0,
+          error_message: null,
+          screenshot_path: null,
+          steps_log: [],
+          vnc_session_id: null,
+          created_at: new Date().toISOString(),
+        };
+        return [newExec, ...execs];
+      }
+    });
   }
 
   loadExecutions() {

@@ -13,6 +13,7 @@ import { TaskService } from '../../../core/services/task.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { WebSocketService } from '../../../core/services/websocket.service';
 import { FormDefinition } from '../../../core/models/task.model';
+import { AiThinkingComponent } from '../../../shared/components/ai-thinking.component';
 
 @Component({
   selector: 'app-step-url',
@@ -27,6 +28,7 @@ import { FormDefinition } from '../../../core/models/task.model';
     MatProgressSpinnerModule,
     MatCardModule,
     MatListModule,
+    AiThinkingComponent,
   ],
   template: `
     <div class="step-url">
@@ -54,6 +56,11 @@ import { FormDefinition } from '../../../core/models/task.model';
           }
         </button>
       </div>
+
+      <!-- AI Thinking Panel -->
+      @if (currentAnalysisId() && analyzing()) {
+        <app-ai-thinking [analysisId]="currentAnalysisId()!" />
+      }
 
       @if (analysisResult()) {
         <mat-card class="mt-2">
@@ -132,6 +139,7 @@ export class StepUrlComponent implements OnDestroy {
   analyzing = signal(false);
   analysisResult = signal<any>(null);
   pages = signal<any[]>([]);
+  currentAnalysisId = signal<string | null>(null);
 
   formsDetected = output<FormDefinition[]>();
 
@@ -139,10 +147,12 @@ export class StepUrlComponent implements OnDestroy {
     if (this.urlControl.invalid) return;
     this.analyzing.set(true);
     this.analysisSub?.unsubscribe();
+    this.currentAnalysisId.set(null);
 
     this.taskService.analyzeUrl(this.urlControl.value).subscribe({
       next: (response) => {
         const analysisId = response.analysis_id;
+        this.currentAnalysisId.set(analysisId);
         this.notify.info('Analysis started, waiting for AI results...');
 
         // Subscribe to WebSocket for the result
@@ -184,10 +194,12 @@ export class StepUrlComponent implements OnDestroy {
   addPage() {
     this.analyzing.set(true);
     this.analysisSub?.unsubscribe();
+    this.currentAnalysisId.set(null);
 
     this.taskService.analyzeNextPage(this.urlControl.value).subscribe({
       next: (response) => {
         const analysisId = response.analysis_id;
+        this.currentAnalysisId.set(analysisId);
 
         this.analysisSub = this.ws.waitForAnalysis(analysisId).subscribe({
           next: (data) => {

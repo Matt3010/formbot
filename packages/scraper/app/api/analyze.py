@@ -9,6 +9,7 @@ router = APIRouter()
 class AnalyzeRequest(BaseModel):
     url: str
     ollama_model: Optional[str] = None
+    analysis_id: Optional[str] = None
 
 
 class DynamicAnalyzeRequest(BaseModel):
@@ -20,7 +21,10 @@ class DynamicAnalyzeRequest(BaseModel):
 @router.post("/analyze")
 async def analyze_url(request: AnalyzeRequest):
     analyzer = FormAnalyzer(ollama_model=request.ollama_model)
-    result = await analyzer.analyze_url(request.url)
+    result = await analyzer.analyze_url(
+        request.url,
+        analysis_id=request.analysis_id,
+    )
     return result
 
 

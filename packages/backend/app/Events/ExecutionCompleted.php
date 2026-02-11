@@ -34,6 +34,11 @@ class ExecutionCompleted implements ShouldBroadcast
         ];
     }
 
+    public function broadcastAs(): string
+    {
+        return 'ExecutionCompleted';
+    }
+
     /**
      * Get the data to broadcast.
      */

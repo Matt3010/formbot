@@ -10,8 +10,10 @@ import { MatDividerModule } from '@angular/material/divider';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatDialog } from '@angular/material/dialog';
+import { Subscription } from 'rxjs';
 import { TaskService } from '../../core/services/task.service';
 import { NotificationService } from '../../core/services/notification.service';
+import { WebSocketService, ExecutionProgress } from '../../core/services/websocket.service';
 import { Task } from '../../core/models/task.model';
 import { ExecutionLogComponent } from './execution-log.component';
 import { VncViewerComponent } from './vnc-viewer.component';
@@ -85,6 +87,18 @@ import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog.c
         </div>
 
         <mat-divider class="mb-2"></mat-divider>
+
+        <!-- Execution Progress Bar -->
+        @if (executionStatus()) {
+          <mat-card class="mb-2 execution-progress-card">
+            <mat-card-content>
+              <div class="flex items-center gap-2">
+                <mat-spinner diameter="20"></mat-spinner>
+                <span class="progress-text">{{ executionStatus() }}</span>
+              </div>
+            </mat-card-content>
+          </mat-card>
+        }
 
         <!-- Task Info -->
         <mat-card class="mb-2">
@@ -160,6 +174,7 @@ import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog.c
             <div class="tab-content">
               <app-execution-log
                 [taskId]="task()!.id"
+                [liveUpdate]="lastExecutionUpdate()"
                 (openVnc)="onOpenVnc($event)"
               />
             </div>
@@ -180,11 +195,15 @@ import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog.c
     .info-value { font-size: 15px; margin-top: 4px; }
     .tab-content { padding: 16px 0; }
     .no-data { text-align: center; color: #999; padding: 32px; }
+    .execution-progress-card { border-left: 4px solid #2196f3; }
+    .progress-text { font-size: 14px; color: #2196f3; }
     .status-draft { background-color: #9e9e9e !important; color: white !important; }
     .status-active { background-color: #4caf50 !important; color: white !important; }
     .status-paused { background-color: #ff9800 !important; color: white !important; }
     .status-completed { background-color: #2196f3 !important; color: white !important; }
     .status-failed { background-color: #f44336 !important; color: white !important; }
+    .status-running { background-color: #2196f3 !important; color: white !important; }
+    .status-waiting_manual { background-color: #ff9800 !important; color: white !important; }
   `]
 })
 export class TaskDetailComponent implements OnInit, OnDestroy {
@@ -192,24 +211,108 @@ export class TaskDetailComponent implements OnInit, OnDestroy {
   private router = inject(Router);
   private taskService = inject(TaskService);
   private notify = inject(NotificationService);
+  private ws = inject(WebSocketService);
   private dialog = inject(MatDialog);
+  private subs: Subscription[] = [];
 
   task = signal<Task | null>(null);
   loading = signal(true);
   vncUrl = signal<string | null>(null);
   vncExecutionId = signal<string | null>(null);
-
-  private pollTimer: ReturnType<typeof setInterval> | null = null;
+  executionStatus = signal<string | null>(null);
+  lastExecutionUpdate = signal<ExecutionProgress | null>(null);
 
   ngOnInit() {
     const id = this.route.snapshot.paramMap.get('id');
     if (id) {
       this.loadTask(id);
     }
+
+    // Connect WebSocket
+    this.ws.connect();
+
+    // Subscribe to task updates
+    this.subs.push(
+      this.ws.taskUpdated$.subscribe(data => {
+        const current = this.task();
+        if (current && current.id === data.id) {
+          this.task.set({ ...current, status: data.status, updated_at: data.updated_at || current.updated_at });
+        }
+      })
+    );
+
+    // Subscribe to execution progress
+    this.subs.push(
+      this.ws.executionProgress$.subscribe(data => {
+        const current = this.task();
+        if (!current || data.task_id !== current.id) return;
+
+        this.lastExecutionUpdate.set(data);
+        this.updateExecutionStatus(data);
+      })
+    );
+
+    // Subscribe to VNC waiting events
+    this.subs.push(
+      this.ws.executionWaitingManual$.subscribe(data => {
+        const current = this.task();
+        if (!current || data.task_id !== current.id) return;
+
+        if (data.vnc_url) {
+          this.vncUrl.set(data.vnc_url);
+          this.vncExecutionId.set(data.execution_id);
+          this.executionStatus.set(`Waiting for manual intervention (${data.reason})...`);
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+      })
+    );
+
+    // Subscribe to task deletion
+    this.subs.push(
+      this.ws.taskDeleted$.subscribe(data => {
+        const current = this.task();
+        if (current && current.id === data.id) {
+          this.notify.info('This task has been deleted');
+          this.router.navigate(['/dashboard']);
+        }
+      })
+    );
   }
 
   ngOnDestroy() {
-    this.stopPolling();
+    this.subs.forEach(s => s.unsubscribe());
+  }
+
+  private updateExecutionStatus(data: ExecutionProgress) {
+    switch (data.status) {
+      case 'running':
+        if (data.step != null && data.total_steps) {
+          this.executionStatus.set(`Step ${data.step}/${data.total_steps}: Navigating to ${data.page_url || 'page'}...`);
+        } else {
+          this.executionStatus.set('Execution started...');
+        }
+        break;
+      case 'submitted':
+        this.executionStatus.set(`Step ${data.step}/${data.total_steps}: Form submitted`);
+        break;
+      case 'waiting_manual':
+        // Handled by executionWaitingManual$ subscription
+        break;
+      case 'success':
+      case 'dry_run_ok':
+        this.executionStatus.set(null);
+        this.loadTask(this.task()!.id);
+        break;
+      case 'failed':
+        this.executionStatus.set(null);
+        this.notify.error(data.error || 'Execution failed');
+        this.loadTask(this.task()!.id);
+        break;
+      default:
+        if (data.field_name) {
+          this.executionStatus.set(`Filling field: ${data.field_name}...`);
+        }
+    }
   }
 
   loadTask(id: string) {
@@ -230,9 +333,7 @@ export class TaskDetailComponent implements OnInit, OnDestroy {
     this.taskService.executeTask(this.task()!.id).subscribe({
       next: () => {
         this.notify.success('Execution started');
-        this.loadTask(this.task()!.id);
-        // Start polling for VNC (execution runs async in background)
-        this.startPolling();
+        this.executionStatus.set('Execution queued...');
       },
       error: () => this.notify.error('Failed to start execution')
     });
@@ -242,7 +343,7 @@ export class TaskDetailComponent implements OnInit, OnDestroy {
     this.taskService.dryRunTask(this.task()!.id).subscribe({
       next: () => {
         this.notify.success('Dry run started');
-        this.loadTask(this.task()!.id);
+        this.executionStatus.set('Dry run queued...');
       },
       error: () => this.notify.error('Failed to start dry run')
     });
@@ -252,7 +353,6 @@ export class TaskDetailComponent implements OnInit, OnDestroy {
     this.taskService.pauseTask(this.task()!.id).subscribe({
       next: () => {
         this.notify.success('Task paused');
-        this.loadTask(this.task()!.id);
       },
       error: () => this.notify.error('Failed to pause task')
     });
@@ -312,6 +412,7 @@ export class TaskDetailComponent implements OnInit, OnDestroy {
   onVncResumed() {
     this.vncUrl.set(null);
     this.vncExecutionId.set(null);
+    this.executionStatus.set('Resumed, continuing execution...');
     this.loadTask(this.task()!.id);
   }
 
@@ -320,56 +421,5 @@ export class TaskDetailComponent implements OnInit, OnDestroy {
     this.vncExecutionId.set(event.executionId);
     // Scroll to top where VNC viewer is rendered
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  }
-
-  private startPolling() {
-    this.stopPolling();
-    let attempts = 0;
-    this.pollTimer = setInterval(() => {
-      attempts++;
-      // Stop after 2 minutes (40 attempts * 3s)
-      if (attempts > 40) {
-        this.stopPolling();
-        return;
-      }
-      this.checkForVnc();
-    }, 3000);
-  }
-
-  private stopPolling() {
-    if (this.pollTimer) {
-      clearInterval(this.pollTimer);
-      this.pollTimer = null;
-    }
-  }
-
-  private checkForVnc() {
-    const taskId = this.task()?.id;
-    if (!taskId) return;
-
-    this.taskService.getExecutions(taskId).subscribe({
-      next: (res) => {
-        const waiting = res.data?.find(
-          (e: any) => e.status === 'waiting_manual' && e.steps_log?.length
-        );
-        if (waiting) {
-          // Extract VNC URL from the last step with a vnc_url
-          const vncStep = [...(waiting.steps_log || [])].reverse().find(
-            (s: any) => s.vnc_url
-          );
-          if (vncStep?.vnc_url) {
-            this.vncUrl.set(vncStep.vnc_url);
-            this.vncExecutionId.set(waiting.id);
-            this.stopPolling();
-          }
-        }
-        // Also stop polling if execution completed
-        const latest = res.data?.[0];
-        if (latest && ['success', 'failed', 'dry_run_ok'].includes(latest.status)) {
-          this.stopPolling();
-          this.loadTask(taskId);
-        }
-      }
-    });
   }
 }

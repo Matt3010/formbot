@@ -6,7 +6,7 @@ export interface Task {
   schedule_type: 'once' | 'cron';
   schedule_cron: string | null;
   schedule_at: string | null;
-  status: 'draft' | 'active' | 'paused' | 'completed' | 'failed';
+  status: 'draft' | 'active' | 'paused' | 'completed' | 'failed' | 'running' | 'deleted';
   is_dry_run: boolean;
   max_retries: number;
   max_parallel: number;

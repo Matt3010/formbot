@@ -33,7 +33,7 @@ class AnalyzeUrlJob implements ShouldQueue
         ]);
 
         try {
-            $result = $scraperClient->analyze($this->url, $this->model);
+            $result = $scraperClient->analyze($this->url, $this->model, $this->analysisId);
 
             event(new AnalysisCompleted(
                 analysisId: $this->analysisId,

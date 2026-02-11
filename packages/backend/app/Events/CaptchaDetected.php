@@ -34,6 +34,11 @@ class CaptchaDetected implements ShouldBroadcast
         ];
     }
 
+    public function broadcastAs(): string
+    {
+        return 'CaptchaDetected';
+    }
+
     /**
      * Get the data to broadcast.
      */

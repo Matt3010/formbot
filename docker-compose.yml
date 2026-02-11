@@ -35,7 +35,7 @@ services:
       - QUEUE_CONNECTION=redis
       - SCRAPER_SERVICE_URL=http://scraper:9000
       - BROADCAST_DRIVER=pusher
-      - PUSHER_APP_ID=${PUSHER_APP_ID:-formbot}
+      - PUSHER_APP_ID=${PUSHER_APP_ID:-100001}
       - PUSHER_APP_KEY=${PUSHER_APP_KEY:-formbot-key}
       - PUSHER_APP_SECRET=${PUSHER_APP_SECRET:-formbot-secret}
       - PUSHER_HOST=websocket
@@ -49,6 +49,7 @@ services:
     volumes:
       - screenshots:/app/storage/app/screenshots
       - uploads:/app/storage/app/uploads
+      - passport_keys:/app/storage/passport
     networks:
       - formbot
 
@@ -74,7 +75,7 @@ services:
       - QUEUE_CONNECTION=redis
       - SCRAPER_SERVICE_URL=http://scraper:9000
       - BROADCAST_DRIVER=pusher
-      - PUSHER_APP_ID=${PUSHER_APP_ID:-formbot}
+      - PUSHER_APP_ID=${PUSHER_APP_ID:-100001}
       - PUSHER_APP_KEY=${PUSHER_APP_KEY:-formbot-key}
       - PUSHER_APP_SECRET=${PUSHER_APP_SECRET:-formbot-secret}
       - PUSHER_HOST=websocket
@@ -88,6 +89,7 @@ services:
     volumes:
       - screenshots:/app/storage/app/screenshots
       - uploads:/app/storage/app/uploads
+      - passport_keys:/app/storage/passport
     networks:
       - formbot
 
@@ -113,7 +115,7 @@ services:
       - QUEUE_CONNECTION=redis
       - SCRAPER_SERVICE_URL=http://scraper:9000
       - BROADCAST_DRIVER=pusher
-      - PUSHER_APP_ID=${PUSHER_APP_ID:-formbot}
+      - PUSHER_APP_ID=${PUSHER_APP_ID:-100001}
       - PUSHER_APP_KEY=${PUSHER_APP_KEY:-formbot-key}
       - PUSHER_APP_SECRET=${PUSHER_APP_SECRET:-formbot-secret}
       - PUSHER_HOST=websocket
@@ -124,6 +126,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    volumes:
+      - passport_keys:/app/storage/passport
     networks:
       - formbot
 
@@ -133,7 +137,7 @@ services:
     ports:
       - "6001:6001"
     environment:
-      - SOKETI_DEFAULT_APP_ID=${PUSHER_APP_ID:-formbot}
+      - SOKETI_DEFAULT_APP_ID=${PUSHER_APP_ID:-100001}
       - SOKETI_DEFAULT_APP_KEY=${PUSHER_APP_KEY:-formbot-key}
       - SOKETI_DEFAULT_APP_SECRET=${PUSHER_APP_SECRET:-formbot-secret}
     networks:
@@ -152,6 +156,11 @@ services:
       - OLLAMA_URL=http://ollama:11434
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
       - VNC_ENABLED=true
+      - PUSHER_APP_ID=${PUSHER_APP_ID:-100001}
+      - PUSHER_APP_KEY=${PUSHER_APP_KEY:-formbot-key}
+      - PUSHER_APP_SECRET=${PUSHER_APP_SECRET:-formbot-secret}
+      - PUSHER_HOST=websocket
+      - PUSHER_PORT=6001
     depends_on:
       db:
         condition: service_healthy
@@ -233,6 +242,7 @@ volumes:
   ollama_models:
   screenshots:
   uploads:
+  passport_keys:
 
 networks:
   formbot:

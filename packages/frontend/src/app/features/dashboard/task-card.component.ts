@@ -6,6 +6,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatMenuModule } from '@angular/material/menu';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { Task } from '../../core/models/task.model';
 
 @Component({
@@ -19,9 +20,10 @@ import { Task } from '../../core/models/task.model';
     MatChipsModule,
     MatTooltipModule,
     MatMenuModule,
+    MatProgressSpinnerModule,
   ],
   template: `
-    <mat-card class="task-card">
+    <mat-card class="task-card" [class.running-card]="task().status === 'running'">
       <mat-card-header>
         <mat-card-title class="task-title">{{ task().name }}</mat-card-title>
         <mat-card-subtitle>{{ task().target_url }}</mat-card-subtitle>
@@ -29,9 +31,14 @@ import { Task } from '../../core/models/task.model';
 
       <mat-card-content>
         <div class="task-meta">
-          <mat-chip [class]="'status-' + task().status">
-            {{ task().status | uppercase }}
-          </mat-chip>
+          <div class="status-wrapper" [class.status-running-pulse]="task().status === 'running'">
+            @if (task().status === 'running') {
+              <mat-spinner diameter="16" class="running-spinner"></mat-spinner>
+            }
+            <mat-chip [class]="'status-' + task().status">
+              {{ task().status | uppercase }}
+            </mat-chip>
+          </div>
 
           <span class="schedule-info">
             <mat-icon class="small-icon">schedule</mat-icon>
@@ -70,7 +77,7 @@ import { Task } from '../../core/models/task.model';
             <mat-icon>pause</mat-icon>
           </button>
         } @else {
-          <button mat-icon-button matTooltip="Execute" (click)="execute.emit()" [disabled]="task().status === 'draft'">
+          <button mat-icon-button matTooltip="Execute" (click)="execute.emit()" [disabled]="task().status === 'draft' || task().status === 'running'">
             <mat-icon>play_arrow</mat-icon>
           </button>
         }
@@ -97,18 +104,30 @@ import { Task } from '../../core/models/task.model';
     </mat-card>
   `,
   styles: [`
-    .task-card { margin-bottom: 16px; }
+    .task-card { margin-bottom: 16px; transition: border-color 0.3s ease; }
+    .running-card { border: 1px solid #2196f3; }
     .task-title { font-size: 18px; }
     .task-meta { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
     .schedule-info { display: flex; align-items: center; gap: 4px; color: #666; font-size: 13px; }
     .form-count { display: flex; align-items: center; gap: 4px; color: #666; font-size: 13px; }
     .dry-run-badge { display: flex; align-items: center; gap: 4px; color: #ff9800; font-size: 13px; }
     .small-icon { font-size: 18px; width: 18px; height: 18px; }
+    .status-wrapper { display: flex; align-items: center; gap: 6px; }
+    .running-spinner { display: inline-block; }
+    .status-running-pulse {
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
     .status-draft { background-color: #9e9e9e !important; color: white !important; }
     .status-active { background-color: #4caf50 !important; color: white !important; }
     .status-paused { background-color: #ff9800 !important; color: white !important; }
     .status-completed { background-color: #2196f3 !important; color: white !important; }
     .status-failed { background-color: #f44336 !important; color: white !important; }
+    .status-running { background-color: #2196f3 !important; color: white !important; }
+    .status-waiting_manual { background-color: #ff9800 !important; color: white !important; }
     .delete-action { color: #f44336; }
   `]
 })
