@@ -17,6 +17,7 @@ _execution_results: dict[str, dict] = {}
 
 class ExecuteRequest(BaseModel):
     task_id: str
+    execution_id: Optional[str] = None
     is_dry_run: bool = False
     stealth_enabled: bool = True
     user_agent: Optional[str] = None
@@ -27,11 +28,12 @@ async def _run_execution(request: ExecuteRequest):
     """Run task execution in background with its own DB session."""
     db = SessionLocal()
     try:
-        logger.info(f"Starting execution for task {request.task_id}")
+        logger.info(f"Starting execution for task {request.task_id} (execution_id={request.execution_id})")
         vnc_manager = get_vnc_manager()
         executor = TaskExecutor(db, vnc_manager=vnc_manager)
         result = await executor.execute(
             task_id=request.task_id,
+            execution_id=request.execution_id,
             is_dry_run=request.is_dry_run,
             stealth_enabled=request.stealth_enabled,
             user_agent=request.user_agent,
@@ -54,6 +56,7 @@ async def execute_task(request: ExecuteRequest):
     return {
         "status": "started",
         "task_id": request.task_id,
+        "execution_id": request.execution_id,
         "message": "Execution started in background"
     }
 

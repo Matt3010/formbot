@@ -51,10 +51,11 @@ class ExecuteTaskJob implements ShouldQueue
      */
     public function handle(ScraperClient $scraperClient): void
     {
+        // Create execution record - Python will manage its status from here
         $execution = ExecutionLog::create([
             'task_id' => $this->task->id,
             'started_at' => now(),
-            'status' => 'running',
+            'status' => 'queued',
             'is_dry_run' => $this->isDryRun,
         ]);
 
@@ -63,6 +64,7 @@ class ExecuteTaskJob implements ShouldQueue
         try {
             $this->task->load('formDefinitions.formFields');
 
+            // Pass execution_id so Python uses this record instead of creating a new one
             $result = $scraperClient->execute(
                 taskId: $this->task->id,
                 isDryRun: $this->isDryRun,
@@ -72,37 +74,12 @@ class ExecuteTaskJob implements ShouldQueue
                     'action_delay_ms' => $this->task->action_delay_ms,
                     'max_retries' => $this->task->max_retries,
                 ],
+                executionId: (string) $execution->id,
             );
 
-            $status = $this->isDryRun ? 'dry_run_ok' : 'success';
-
-            if (isset($result['status'])) {
-                $status = match ($result['status']) {
-                    'captcha_blocked' => 'captcha_blocked',
-                    '2fa_required' => '2fa_required',
-                    'waiting_manual' => 'waiting_manual',
-                    'failed' => 'failed',
-                    default => $status,
-                };
-            }
-
-            $execution->update([
-                'completed_at' => now(),
-                'status' => $status,
-                'steps_log' => $result['steps'] ?? null,
-                'screenshot_path' => $result['screenshot_path'] ?? null,
-                'vnc_session_id' => $result['vnc_session_id'] ?? null,
-            ]);
-
-            if ($status === 'captcha_blocked') {
-                event(new CaptchaDetected($execution));
-            }
-
-            // Update task status
-            if (!$this->isDryRun && in_array($status, ['success', 'failed'])) {
-                $this->task->update(['status' => $status === 'success' ? 'completed' : 'failed']);
-                event(new TaskStatusChanged($this->task));
-            }
+            // Python runs in background and manages the execution record directly in DB.
+            // We don't update the execution here - Python handles status transitions
+            // (running -> waiting_manual -> success/failed).
 
         } catch (\Exception $e) {
             Log::error('Task execution failed', [
@@ -111,6 +88,7 @@ class ExecuteTaskJob implements ShouldQueue
                 'error' => $e->getMessage(),
             ]);
 
+            // Only update on HTTP-level failure (scraper unreachable, etc.)
             $execution->update([
                 'completed_at' => now(),
                 'status' => 'failed',
@@ -123,8 +101,6 @@ class ExecuteTaskJob implements ShouldQueue
                 event(new TaskStatusChanged($this->task));
             }
         }
-
-        event(new ExecutionCompleted($execution->fresh()));
     }
 
     /**

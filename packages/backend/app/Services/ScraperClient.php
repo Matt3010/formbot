@@ -48,13 +48,19 @@ class ScraperClient
     /**
      * Execute a task via the Python scraper service.
      */
-    public function execute(string $taskId, bool $isDryRun = false, array $options = []): array
+    public function execute(string $taskId, bool $isDryRun = false, array $options = [], ?string $executionId = null): array
     {
         $payload = [
             'task_id' => $taskId,
             'is_dry_run' => $isDryRun,
-            'options' => $options,
+            'stealth_enabled' => $options['stealth_enabled'] ?? true,
+            'user_agent' => $options['custom_user_agent'] ?? null,
+            'action_delay_ms' => $options['action_delay_ms'] ?? 500,
         ];
+
+        if ($executionId) {
+            $payload['execution_id'] = $executionId;
+        }
 
         $response = Http::timeout($this->timeout)
             ->post("{$this->baseUrl}/execute", $payload);

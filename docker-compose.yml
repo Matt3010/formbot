@@ -146,7 +146,7 @@ services:
       dockerfile: Dockerfile
     ports:
       - "9001:9000"
-      - "6080:6080"
+      - "6080-6099:6080-6099"  # VNC sessions (up to 20 concurrent)
     environment:
       - DATABASE_URL=postgresql://formbot:${DB_PASSWORD}@db:5432/formbot
       - OLLAMA_URL=http://ollama:11434

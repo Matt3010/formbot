@@ -23,13 +23,15 @@ class TaskExecutor:
         self.ollama = OllamaClient()
 
     async def _vnc_pause(self, execution, steps_log, step_info, reason: str, browser) -> bool:
-        """Start VNC session and wait for user to resume.
+        """Activate VNC viewer and wait for user to resume.
 
+        Uses the pre-reserved display session and activates x11vnc + websockify
+        so the user can see and interact with the browser.
         Returns True if resumed successfully, False if timed out.
-        If timed out, execution is marked as failed and browser is closed.
         """
-        vnc_result = await self.vnc_manager.start_session(str(execution.id))
-        session_id = vnc_result.get("session_id")
+        # Activate VNC on the reserved display (starts x11vnc + websockify)
+        session_id = self._vnc_session_id
+        vnc_result = await self.vnc_manager.activate_vnc(session_id)
 
         execution.status = 'waiting_manual'
         execution.vnc_session_id = session_id
@@ -39,6 +41,7 @@ class TaskExecutor:
         step_info["waiting_reason"] = reason
         step_info["vnc_session_id"] = session_id
         step_info["vnc_url"] = vnc_result.get("vnc_url")
+        step_info["ws_port"] = vnc_result.get("ws_port")
         steps_log.append(step_info)
 
         execution.steps_log = steps_log
@@ -56,8 +59,14 @@ class TaskExecutor:
             await browser.close()
             return False
 
-        # User resumed - stop VNC, continue execution
-        await self.vnc_manager.stop_session(session_id)
+        # User resumed - kill VNC viewer processes but keep Xvfb (browser still needs it)
+        session = self.vnc_manager.sessions.get(session_id)
+        if session:
+            self.vnc_manager._kill_proc(session.get("x11vnc_proc"))
+            self.vnc_manager._kill_proc(session.get("websockify_proc"))
+            session["x11vnc_proc"] = None
+            session["websockify_proc"] = None
+            session["status"] = "reserved"
 
         step_info["status"] = f"{reason}_resolved"
         execution.status = 'running'
@@ -68,7 +77,8 @@ class TaskExecutor:
 
         return True
 
-    async def execute(self, task_id: str, is_dry_run: bool = False,
+    async def execute(self, task_id: str, execution_id: str = None,
+                      is_dry_run: bool = False,
                       stealth_enabled: bool = True, user_agent: str = None,
                       action_delay_ms: int = 500) -> dict:
         """Execute a complete task flow."""
@@ -77,18 +87,27 @@ class TaskExecutor:
         if not task:
             raise ValueError(f"Task {task_id} not found")
 
-        # Create execution log
-        execution = ExecutionLog(
-            id=uuid.uuid4(),
-            task_id=task.id,
-            started_at=datetime.utcnow(),
-            status='running',
-            is_dry_run=is_dry_run,
-            steps_log=[],
-            created_at=datetime.utcnow()
-        )
-        self.db.add(execution)
-        self.db.commit()
+        # Use existing execution record (created by Laravel) or create new one
+        if execution_id:
+            execution = self.db.query(ExecutionLog).filter(ExecutionLog.id == execution_id).first()
+            if not execution:
+                raise ValueError(f"Execution {execution_id} not found")
+            execution.status = 'running'
+            execution.started_at = datetime.utcnow()
+            execution.steps_log = []
+            self.db.commit()
+        else:
+            execution = ExecutionLog(
+                id=uuid.uuid4(),
+                task_id=task.id,
+                started_at=datetime.utcnow(),
+                status='running',
+                is_dry_run=is_dry_run,
+                steps_log=[],
+                created_at=datetime.utcnow()
+            )
+            self.db.add(execution)
+            self.db.commit()
 
         steps_log = []
 
@@ -100,18 +119,23 @@ class TaskExecutor:
 
         needs_vnc = any(fd.captcha_detected or fd.two_factor_expected for fd in form_defs)
 
-        # Set up Xvfb BEFORE starting Playwright if VNC is needed
+        # For VNC: reserve a display (starts only Xvfb) so Playwright can render.
+        # x11vnc + websockify are started later only when a pause is actually needed.
+        self._vnc_session_id = None
         if needs_vnc:
-            self.vnc_manager._start_xvfb()
-            await asyncio.sleep(2)  # Wait for Xvfb to be ready
-            os.environ["DISPLAY"] = self.vnc_manager.get_display()
+            reserved = await self.vnc_manager.reserve_display(str(execution.id))
+            self._vnc_session_id = reserved["session_id"]
+            self._vnc_display = reserved["display"]
 
         try:
             async with async_playwright() as p:
                 launch_args = ["--no-sandbox", "--disable-setuid-sandbox"]
 
                 if needs_vnc:
-                    launch_options = {"headless": False, "args": launch_args}
+                    # Pass DISPLAY per-process via env param to avoid race conditions
+                    # when multiple tasks run concurrently in the same async process
+                    launch_env = {**os.environ, "DISPLAY": self._vnc_display}
+                    launch_options = {"headless": False, "args": launch_args, "env": launch_env}
                 else:
                     launch_options = {"headless": True, "args": launch_args}
 
@@ -272,6 +296,11 @@ class TaskExecutor:
                 await page.screenshot(path=screenshot_path, full_page=True)
 
                 await browser.close()
+
+            # Cleanup VNC session (stop Xvfb and any VNC processes)
+            if self._vnc_session_id:
+                await self.vnc_manager.stop_session(self._vnc_session_id)
+                self._vnc_session_id = None
 
             # Update execution log - success
             execution.status = 'success'
