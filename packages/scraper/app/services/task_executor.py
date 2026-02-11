@@ -1,0 +1,301 @@
+import os
+import uuid
+import asyncio
+from datetime import datetime
+from playwright.async_api import async_playwright
+from sqlalchemy.orm import Session
+from app.config import settings
+from app.services.stealth import apply_stealth
+from app.services.ollama_client import OllamaClient
+from app.services.vnc_manager import VNCManager
+from app.prompts.captcha_detection import CAPTCHA_DETECTION_PROMPT
+from app.models.task import Task
+from app.models.form_definition import FormDefinition
+from app.models.form_field import FormField
+from app.models.execution_log import ExecutionLog
+from cryptography.fernet import Fernet
+
+
+class TaskExecutor:
+    def __init__(self, db: Session, vnc_manager: VNCManager | None = None):
+        self.db = db
+        self.vnc_manager = vnc_manager or VNCManager()
+        self.ollama = OllamaClient()
+
+    async def _vnc_pause(self, execution, steps_log, step_info, reason: str, browser) -> bool:
+        """Start VNC session and wait for user to resume.
+
+        Returns True if resumed successfully, False if timed out.
+        If timed out, execution is marked as failed and browser is closed.
+        """
+        vnc_result = await self.vnc_manager.start_session(str(execution.id))
+        session_id = vnc_result.get("session_id")
+
+        execution.status = 'waiting_manual'
+        execution.vnc_session_id = session_id
+        self.db.commit()
+
+        step_info["status"] = "waiting_manual"
+        step_info["waiting_reason"] = reason
+        step_info["vnc_session_id"] = session_id
+        step_info["vnc_url"] = vnc_result.get("vnc_url")
+        steps_log.append(step_info)
+
+        execution.steps_log = steps_log
+        self.db.commit()
+
+        # WAIT for user to complete manual action and click resume
+        resumed = await self.vnc_manager.wait_for_resume(session_id, timeout=3600)
+
+        if not resumed:
+            execution.status = 'failed'
+            execution.error_message = f'VNC session timed out waiting for manual intervention ({reason})'
+            execution.completed_at = datetime.utcnow()
+            execution.steps_log = steps_log
+            self.db.commit()
+            await browser.close()
+            return False
+
+        # User resumed - stop VNC, continue execution
+        await self.vnc_manager.stop_session(session_id)
+
+        step_info["status"] = f"{reason}_resolved"
+        execution.status = 'running'
+        self.db.commit()
+
+        # Replace the waiting_manual entry with updated step info
+        steps_log[-1] = step_info
+
+        return True
+
+    async def execute(self, task_id: str, is_dry_run: bool = False,
+                      stealth_enabled: bool = True, user_agent: str = None,
+                      action_delay_ms: int = 500) -> dict:
+        """Execute a complete task flow."""
+
+        task = self.db.query(Task).filter(Task.id == task_id).first()
+        if not task:
+            raise ValueError(f"Task {task_id} not found")
+
+        # Create execution log
+        execution = ExecutionLog(
+            id=uuid.uuid4(),
+            task_id=task.id,
+            started_at=datetime.utcnow(),
+            status='running',
+            is_dry_run=is_dry_run,
+            steps_log=[],
+            created_at=datetime.utcnow()
+        )
+        self.db.add(execution)
+        self.db.commit()
+
+        steps_log = []
+
+        # Check if any form needs VNC (captcha or 2FA) - if so, use headed mode on Xvfb
+        form_defs = (self.db.query(FormDefinition)
+            .filter(FormDefinition.task_id == task.id)
+            .order_by(FormDefinition.step_order)
+            .all())
+
+        needs_vnc = any(fd.captcha_detected or fd.two_factor_expected for fd in form_defs)
+
+        # Set up Xvfb BEFORE starting Playwright if VNC is needed
+        if needs_vnc:
+            self.vnc_manager._start_xvfb()
+            await asyncio.sleep(2)  # Wait for Xvfb to be ready
+            os.environ["DISPLAY"] = self.vnc_manager.get_display()
+
+        try:
+            async with async_playwright() as p:
+                launch_args = ["--no-sandbox", "--disable-setuid-sandbox"]
+
+                if needs_vnc:
+                    launch_options = {"headless": False, "args": launch_args}
+                else:
+                    launch_options = {"headless": True, "args": launch_args}
+
+                browser = await p.chromium.launch(**launch_options)
+
+                context_options = {}
+                if user_agent:
+                    context_options["user_agent"] = user_agent
+
+                context = await browser.new_context(**context_options)
+
+                if stealth_enabled:
+                    await apply_stealth(context)
+
+                page = await context.new_page()
+
+                for i, form_def in enumerate(form_defs):
+                    step_info = {
+                        "step": form_def.step_order,
+                        "page_url": form_def.page_url,
+                        "form_type": form_def.form_type,
+                        "status": "started",
+                        "timestamp": datetime.utcnow().isoformat()
+                    }
+
+                    # Navigate to page
+                    await page.goto(form_def.page_url, wait_until="networkidle", timeout=30000)
+                    await page.wait_for_timeout(1000)
+
+                    step_info["navigated"] = True
+
+                    # Wait for form
+                    try:
+                        await page.wait_for_selector(form_def.form_selector, timeout=10000)
+                    except Exception:
+                        step_info["status"] = "form_not_found"
+                        step_info["error"] = f"Form selector '{form_def.form_selector}' not found"
+                        steps_log.append(step_info)
+                        raise Exception(step_info["error"])
+
+                    # Pre-submit VNC pause: CAPTCHA (user solves captcha before fields are filled)
+                    if form_def.captcha_detected:
+                        resumed = await self._vnc_pause(
+                            execution, steps_log, step_info, "captcha", browser
+                        )
+                        if not resumed:
+                            return {
+                                "execution_id": str(execution.id),
+                                "status": "failed",
+                                "error": "VNC timeout (captcha)"
+                            }
+
+                    # Fill form fields
+                    fields = (self.db.query(FormField)
+                        .filter(FormField.form_definition_id == form_def.id)
+                        .order_by(FormField.sort_order)
+                        .all())
+
+                    for field in fields:
+                        if field.preset_value is None:
+                            continue
+
+                        value = field.preset_value
+
+                        # Decrypt sensitive values
+                        if field.is_sensitive and settings.encryption_key:
+                            try:
+                                fernet = Fernet(settings.encryption_key.encode())
+                                value = fernet.decrypt(value.encode()).decode()
+                            except Exception:
+                                pass
+
+                        try:
+                            if field.field_type == 'hidden':
+                                await page.eval_on_selector(
+                                    field.field_selector,
+                                    "(el, val) => el.value = val", value
+                                )
+                            elif field.is_file_upload:
+                                file_path = os.path.join(settings.upload_dir, value)
+                                await page.set_input_files(field.field_selector, file_path)
+                            elif field.field_type in ('select',):
+                                await page.select_option(field.field_selector, value)
+                            elif field.field_type == 'checkbox':
+                                if value.lower() in ('true', '1', 'yes', 'on'):
+                                    await page.check(field.field_selector)
+                                else:
+                                    await page.uncheck(field.field_selector)
+                            elif field.field_type == 'radio':
+                                await page.check(f'{field.field_selector}[value="{value}"]')
+                            else:
+                                await page.fill(field.field_selector, value)
+
+                            # Wait between actions
+                            await page.wait_for_timeout(action_delay_ms)
+
+                        except Exception as e:
+                            step_info[f"field_{field.field_name}_error"] = str(e)
+
+                    # Check if this is the last step and dry run
+                    is_last_step = (i == len(form_defs) - 1)
+
+                    if is_dry_run and is_last_step:
+                        screenshot_name = f"{execution.id}_dryrun.png"
+                        screenshot_path = os.path.join(settings.screenshot_dir, screenshot_name)
+                        await page.screenshot(path=screenshot_path, full_page=True)
+
+                        step_info["status"] = "dry_run_complete"
+                        steps_log.append(step_info)
+
+                        execution.status = 'dry_run_ok'
+                        execution.screenshot_path = screenshot_name
+                        execution.completed_at = datetime.utcnow()
+                        execution.steps_log = steps_log
+                        self.db.commit()
+
+                        await browser.close()
+                        return {
+                            "execution_id": str(execution.id),
+                            "status": "dry_run_ok",
+                            "screenshot": screenshot_name
+                        }
+
+                    # Submit form
+                    try:
+                        await page.click(form_def.submit_selector)
+                        await page.wait_for_load_state("networkidle", timeout=15000)
+                        await page.wait_for_timeout(1000)
+                        step_info["status"] = "submitted"
+                    except Exception as e:
+                        step_info["status"] = "submit_error"
+                        step_info["error"] = str(e)
+
+                    steps_log.append(step_info)
+
+                    # Post-submit VNC pause: 2FA (user enters OTP/code after login submit)
+                    if form_def.two_factor_expected:
+                        tfa_step_info = {
+                            "step": form_def.step_order,
+                            "page_url": form_def.page_url,
+                            "form_type": "2fa_intervention",
+                            "status": "started",
+                            "timestamp": datetime.utcnow().isoformat()
+                        }
+                        resumed = await self._vnc_pause(
+                            execution, steps_log, tfa_step_info, "2fa", browser
+                        )
+                        if not resumed:
+                            return {
+                                "execution_id": str(execution.id),
+                                "status": "failed",
+                                "error": "VNC timeout (2fa)"
+                            }
+
+                # Take final screenshot
+                screenshot_name = f"{execution.id}_final.png"
+                screenshot_path = os.path.join(settings.screenshot_dir, screenshot_name)
+                await page.screenshot(path=screenshot_path, full_page=True)
+
+                await browser.close()
+
+            # Update execution log - success
+            execution.status = 'success'
+            execution.screenshot_path = screenshot_name
+            execution.completed_at = datetime.utcnow()
+            execution.steps_log = steps_log
+            self.db.commit()
+
+            return {
+                "execution_id": str(execution.id),
+                "status": "success",
+                "screenshot": screenshot_name
+            }
+
+        except Exception as e:
+            # Update execution log - failed
+            execution.status = 'failed'
+            execution.error_message = str(e)
+            execution.completed_at = datetime.utcnow()
+            execution.steps_log = steps_log
+            self.db.commit()
+
+            return {
+                "execution_id": str(execution.id),
+                "status": "failed",
+                "error": str(e)
+            }

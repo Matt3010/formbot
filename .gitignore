@@ -1,0 +1,40 @@
+# Environment
+.env
+*.env.local
+
+# Dependencies
+node_modules/
+vendor/
+__pycache__/
+*.pyc
+.venv/
+
+# Build artifacts
+packages/frontend/dist/
+packages/frontend/.angular/
+packages/backend/bootstrap/cache/*.php
+packages/backend/storage/*.key
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker volumes
+pgdata/
+redis_data/
+ollama_models/
+
+# Laravel
+packages/backend/storage/logs/*
+!packages/backend/storage/logs/.gitkeep
+packages/backend/storage/framework/cache/*
+packages/backend/storage/framework/sessions/*
+packages/backend/storage/framework/views/*
+packages/backend/storage/app/screenshots/*
+packages/backend/storage/app/uploads/*

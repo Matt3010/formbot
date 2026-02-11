@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Site - Two-Factor Authentication</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 400px; margin: 80px auto; padding: 20px; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="text"] {
+            width: 100%; padding: 12px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;
+            font-size: 24px; text-align: center; letter-spacing: 8px;
+        }
+        button { background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; width: 100%; }
+        button:hover { background: #0056b3; }
+        h1 { text-align: center; }
+        .info { background: #e8f4fd; border: 1px solid #b8daff; border-radius: 4px; padding: 12px; margin-bottom: 20px; font-size: 14px; color: #004085; }
+        .icon { font-size: 48px; text-align: center; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <div class="icon">&#128272;</div>
+    <h1>Two-Factor Authentication</h1>
+
+    <div class="info">
+        A verification code has been sent to your phone ending in **42.
+        Enter the 6-digit code below.
+    </div>
+
+    <form id="twoFactorForm" action="dashboard.html" method="GET">
+        <div class="form-group">
+            <label for="otp_code">Verification Code</label>
+            <input type="text" id="otp_code" name="otp_code" required
+                   placeholder="000000" maxlength="6" pattern="[0-9]{6}"
+                   autocomplete="one-time-code">
+        </div>
+        <button type="submit" id="verify-btn">Verify</button>
+    </form>
+
+    <p style="text-align: center; margin-top: 20px; font-size: 13px; color: #666;">
+        Didn't receive a code? <a href="#">Resend code</a>
+    </p>
+</body>
+</html>

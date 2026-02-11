@@ -1,0 +1,239 @@
+services:
+  # ---- Frontend (Angular) ----
+  frontend:
+    build:
+      context: ./packages/frontend
+      dockerfile: Dockerfile
+    ports:
+      - "4200:80"
+    depends_on:
+      - backend
+    networks:
+      - formbot
+
+  # ---- Backend (Laravel) ----
+  backend:
+    build:
+      context: ./packages/backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_KEY=${APP_KEY}
+      - APP_DEBUG=${APP_DEBUG:-true}
+      - APP_URL=http://localhost:8000
+      - DB_CONNECTION=pgsql
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_DATABASE=formbot
+      - DB_USERNAME=formbot
+      - DB_PASSWORD=${DB_PASSWORD}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - CACHE_STORE=redis
+      - SESSION_DRIVER=redis
+      - QUEUE_CONNECTION=redis
+      - SCRAPER_SERVICE_URL=http://scraper:9000
+      - BROADCAST_DRIVER=pusher
+      - PUSHER_APP_ID=${PUSHER_APP_ID:-formbot}
+      - PUSHER_APP_KEY=${PUSHER_APP_KEY:-formbot-key}
+      - PUSHER_APP_SECRET=${PUSHER_APP_SECRET:-formbot-secret}
+      - PUSHER_HOST=websocket
+      - PUSHER_PORT=6001
+      - PUSHER_SCHEME=http
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - screenshots:/app/storage/app/screenshots
+      - uploads:/app/storage/app/uploads
+    networks:
+      - formbot
+
+  # ---- Laravel Queue Worker ----
+  queue-worker:
+    build:
+      context: ./packages/backend
+      dockerfile: Dockerfile
+    command: php artisan queue:work redis --sleep=3 --tries=3 --max-time=3600
+    environment:
+      - APP_KEY=${APP_KEY}
+      - APP_DEBUG=${APP_DEBUG:-true}
+      - DB_CONNECTION=pgsql
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_DATABASE=formbot
+      - DB_USERNAME=formbot
+      - DB_PASSWORD=${DB_PASSWORD}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - CACHE_STORE=redis
+      - SESSION_DRIVER=redis
+      - QUEUE_CONNECTION=redis
+      - SCRAPER_SERVICE_URL=http://scraper:9000
+      - BROADCAST_DRIVER=pusher
+      - PUSHER_APP_ID=${PUSHER_APP_ID:-formbot}
+      - PUSHER_APP_KEY=${PUSHER_APP_KEY:-formbot-key}
+      - PUSHER_APP_SECRET=${PUSHER_APP_SECRET:-formbot-secret}
+      - PUSHER_HOST=websocket
+      - PUSHER_PORT=6001
+      - PUSHER_SCHEME=http
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - screenshots:/app/storage/app/screenshots
+      - uploads:/app/storage/app/uploads
+    networks:
+      - formbot
+
+  # ---- Laravel Scheduler ----
+  scheduler:
+    build:
+      context: ./packages/backend
+      dockerfile: Dockerfile
+    command: sh -c "while true; do php artisan schedule:run --no-interaction; sleep 60; done"
+    environment:
+      - APP_KEY=${APP_KEY}
+      - APP_DEBUG=${APP_DEBUG:-true}
+      - DB_CONNECTION=pgsql
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_DATABASE=formbot
+      - DB_USERNAME=formbot
+      - DB_PASSWORD=${DB_PASSWORD}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - CACHE_STORE=redis
+      - SESSION_DRIVER=redis
+      - QUEUE_CONNECTION=redis
+      - SCRAPER_SERVICE_URL=http://scraper:9000
+      - BROADCAST_DRIVER=pusher
+      - PUSHER_APP_ID=${PUSHER_APP_ID:-formbot}
+      - PUSHER_APP_KEY=${PUSHER_APP_KEY:-formbot-key}
+      - PUSHER_APP_SECRET=${PUSHER_APP_SECRET:-formbot-secret}
+      - PUSHER_HOST=websocket
+      - PUSHER_PORT=6001
+      - PUSHER_SCHEME=http
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - formbot
+
+  # ---- WebSocket Server (Soketi) ----
+  websocket:
+    image: quay.io/soketi/soketi:latest
+    ports:
+      - "6001:6001"
+    environment:
+      - SOKETI_DEFAULT_APP_ID=${PUSHER_APP_ID:-formbot}
+      - SOKETI_DEFAULT_APP_KEY=${PUSHER_APP_KEY:-formbot-key}
+      - SOKETI_DEFAULT_APP_SECRET=${PUSHER_APP_SECRET:-formbot-secret}
+    networks:
+      - formbot
+
+  # ---- Python Scraper Service (includes VNC) ----
+  scraper:
+    build:
+      context: ./packages/scraper
+      dockerfile: Dockerfile
+    ports:
+      - "9001:9000"
+      - "6080:6080"
+    environment:
+      - DATABASE_URL=postgresql://formbot:${DB_PASSWORD}@db:5432/formbot
+      - OLLAMA_URL=http://ollama:11434
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - VNC_ENABLED=true
+    depends_on:
+      db:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    volumes:
+      - screenshots:/app/screenshots
+      - uploads:/app/uploads
+    networks:
+      - formbot
+
+  # ---- Database (PostgreSQL) ----
+  db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=formbot
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=formbot
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U formbot"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - formbot
+
+  # ---- Redis ----
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - formbot
+
+  # ---- Ollama ----
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    # Uncomment for GPU support:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    networks:
+      - formbot
+
+  # ---- Test Site (dev only) ----
+  test-site:
+    build:
+      context: ./test-site
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    profiles:
+      - dev
+    networks:
+      - formbot
+
+volumes:
+  pgdata:
+  redis_data:
+  ollama_models:
+  screenshots:
+  uploads:
+
+networks:
+  formbot:
+    driver: bridge
