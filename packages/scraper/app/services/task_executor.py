@@ -330,7 +330,9 @@ class TaskExecutor:
                         step_info["status"] = "submit_error"
                         step_info["error"] = str(e)
 
-                    steps_log.append(step_info)
+                    # Only append if not already added by _vnc_pause
+                    if not steps_log or steps_log[-1] is not step_info:
+                        steps_log.append(step_info)
 
                     # Broadcast step completed
                     self._broadcast("execution.step_completed", {
@@ -365,11 +367,6 @@ class TaskExecutor:
                 await page.screenshot(path=screenshot_path, full_page=True)
 
                 await browser.close()
-
-            # Cleanup VNC session (stop Xvfb and any VNC processes)
-            if self._vnc_session_id:
-                await self.vnc_manager.stop_session(self._vnc_session_id)
-                self._vnc_session_id = None
 
             # Update execution log - success
             execution.status = 'success'
@@ -409,3 +406,11 @@ class TaskExecutor:
                 "status": "failed",
                 "error": str(e)
             }
+        finally:
+            # Always cleanup VNC session (Xvfb + x11vnc) regardless of outcome
+            if self._vnc_session_id:
+                try:
+                    await self.vnc_manager.stop_session(self._vnc_session_id)
+                except Exception:
+                    pass
+                self._vnc_session_id = None

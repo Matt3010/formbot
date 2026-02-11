@@ -78,6 +78,33 @@ def _build_executor_patches(page, browser):
     return pw_patch, stealth_patch, context
 
 
+def _make_two_phase_vnc_mock(session_id="vnc-test-session"):
+    """Create a VNC manager mock supporting the two-phase approach
+    (reserve_display + activate_vnc) used by the task executor."""
+    vnc = MagicMock()
+
+    resume_event = MagicMock()
+    vnc.sessions = {
+        session_id: {"resume_event": resume_event},
+    }
+
+    vnc.reserve_display = AsyncMock(return_value={
+        "session_id": session_id,
+        "display": ":99",
+    })
+
+    vnc.activate_vnc = AsyncMock(return_value={
+        "vnc_url": "http://localhost:6080/vnc_lite.html?token=test",
+        "ws_port": 6080,
+    })
+
+    vnc.deactivate_vnc = MagicMock()
+    vnc.wait_for_resume = AsyncMock(return_value=True)
+    vnc.stop_session = AsyncMock(return_value={"status": "stopped"})
+
+    return vnc
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -267,7 +294,7 @@ async def test_execute_dry_run(mock_db, mock_vnc_manager):
 
 
 @pytest.mark.asyncio
-async def test_execute_captcha_triggers_vnc_pause(mock_db, mock_vnc_manager):
+async def test_execute_captcha_triggers_vnc_pause(mock_db):
     """When captcha_detected=True, a VNC pause is triggered before field filling."""
     task_id = uuid.uuid4()
     fd_id = uuid.uuid4()
@@ -291,29 +318,36 @@ async def test_execute_captcha_triggers_vnc_pause(mock_db, mock_vnc_manager):
     browser = _make_mock_browser(_make_mock_context(page))
     pw_patch, stealth_patch, context = _build_executor_patches(page, browser)
 
-    # VNC resumes successfully
-    mock_vnc_manager.wait_for_resume = AsyncMock(return_value=True)
+    vnc_mock = _make_two_phase_vnc_mock()
 
-    with pw_patch, stealth_patch:
+    broadcaster_patch = patch(
+        "app.services.task_executor.Broadcaster.get_instance",
+        return_value=MagicMock(),
+    )
+
+    with pw_patch, stealth_patch, broadcaster_patch:
         from app.services.task_executor import TaskExecutor
 
-        executor = TaskExecutor(db=mock_db, vnc_manager=mock_vnc_manager)
+        executor = TaskExecutor(db=mock_db, vnc_manager=vnc_mock)
         result = await executor.execute(str(task_id))
 
     assert result["status"] == "success"
 
-    # VNC session was started
-    mock_vnc_manager.start_session.assert_awaited_once()
+    # VNC display was reserved
+    vnc_mock.reserve_display.assert_awaited_once()
+
+    # VNC was activated (captcha pause)
+    vnc_mock.activate_vnc.assert_awaited_once()
 
     # VNC was waited on
-    mock_vnc_manager.wait_for_resume.assert_awaited_once()
+    vnc_mock.wait_for_resume.assert_awaited_once()
 
-    # VNC was stopped after resume
-    mock_vnc_manager.stop_session.assert_awaited_once()
+    # VNC was stopped after execution
+    vnc_mock.stop_session.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_execute_2fa_triggers_post_submit_vnc(mock_db, mock_vnc_manager):
+async def test_execute_2fa_triggers_post_submit_vnc(mock_db):
     """When two_factor_expected=True, VNC pause happens AFTER form submission."""
     task_id = uuid.uuid4()
     fd_id = uuid.uuid4()
@@ -337,12 +371,17 @@ async def test_execute_2fa_triggers_post_submit_vnc(mock_db, mock_vnc_manager):
     browser = _make_mock_browser(_make_mock_context(page))
     pw_patch, stealth_patch, context = _build_executor_patches(page, browser)
 
-    mock_vnc_manager.wait_for_resume = AsyncMock(return_value=True)
+    vnc_mock = _make_two_phase_vnc_mock()
 
-    with pw_patch, stealth_patch:
+    broadcaster_patch = patch(
+        "app.services.task_executor.Broadcaster.get_instance",
+        return_value=MagicMock(),
+    )
+
+    with pw_patch, stealth_patch, broadcaster_patch:
         from app.services.task_executor import TaskExecutor
 
-        executor = TaskExecutor(db=mock_db, vnc_manager=mock_vnc_manager)
+        executor = TaskExecutor(db=mock_db, vnc_manager=vnc_mock)
         result = await executor.execute(str(task_id))
 
     assert result["status"] == "success"
@@ -350,13 +389,14 @@ async def test_execute_2fa_triggers_post_submit_vnc(mock_db, mock_vnc_manager):
     # Submit was clicked (2FA pause is POST-submit)
     page.click.assert_awaited_once_with("#submit")
 
-    # VNC session was started for 2FA
-    mock_vnc_manager.start_session.assert_awaited_once()
-    mock_vnc_manager.wait_for_resume.assert_awaited_once()
+    # VNC display was reserved and activated for 2FA
+    vnc_mock.reserve_display.assert_awaited_once()
+    vnc_mock.activate_vnc.assert_awaited_once()
+    vnc_mock.wait_for_resume.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_execute_vnc_timeout_fails(mock_db, mock_vnc_manager):
+async def test_execute_vnc_timeout_fails(mock_db):
     """When VNC wait_for_resume times out, execution fails."""
     task_id = uuid.uuid4()
     fd_id = uuid.uuid4()
@@ -376,16 +416,25 @@ async def test_execute_vnc_timeout_fails(mock_db, mock_vnc_manager):
     pw_patch, stealth_patch, context = _build_executor_patches(page, browser)
 
     # VNC times out
-    mock_vnc_manager.wait_for_resume = AsyncMock(return_value=False)
+    vnc_mock = _make_two_phase_vnc_mock()
+    vnc_mock.wait_for_resume = AsyncMock(return_value=False)
 
-    with pw_patch, stealth_patch:
+    broadcaster_patch = patch(
+        "app.services.task_executor.Broadcaster.get_instance",
+        return_value=MagicMock(),
+    )
+
+    with pw_patch, stealth_patch, broadcaster_patch:
         from app.services.task_executor import TaskExecutor
 
-        executor = TaskExecutor(db=mock_db, vnc_manager=mock_vnc_manager)
+        executor = TaskExecutor(db=mock_db, vnc_manager=vnc_mock)
         result = await executor.execute(str(task_id))
 
     assert result["status"] == "failed"
     assert "VNC timeout" in result["error"]
+
+    # VNC session cleaned up via finally block
+    vnc_mock.stop_session.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -787,3 +836,165 @@ async def test_execute_dry_run_multi_step(mock_db, mock_vnc_manager):
 
     # Screenshot was taken
     page.screenshot.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# Bug fix regression tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_no_duplicate_step_in_steps_log_after_captcha(mock_db):
+    """After captcha is resolved, steps_log should contain exactly one entry
+    per step — no duplicates from _vnc_pause + main loop both appending.
+
+    Regression test for: _vnc_pause appended step_info to steps_log, then
+    the main loop appended it again after submit, causing duplicate entries.
+    """
+    task_id = uuid.uuid4()
+    fd_id = uuid.uuid4()
+
+    task = make_task(id=task_id)
+    form_def = make_form_definition(
+        id=fd_id, task_id=task_id, step_order=1,
+        page_url="https://example.com/captcha",
+        form_selector="#captcha-form", submit_selector="button[type='submit']",
+        captcha_detected=True, two_factor_expected=False,
+    )
+    field = make_form_field(
+        form_definition_id=fd_id, field_name="name",
+        field_type="text", field_selector="#name",
+        preset_value="Test", sort_order=0,
+    )
+
+    _setup_db_for_task(mock_db, task, [form_def], {fd_id: [field]})
+
+    page = _make_mock_page()
+    browser = _make_mock_browser(_make_mock_context(page))
+    pw_patch, stealth_patch, _ = _build_executor_patches(page, browser)
+
+    vnc_mock = _make_two_phase_vnc_mock()
+
+    broadcaster_patch = patch(
+        "app.services.task_executor.Broadcaster.get_instance",
+        return_value=MagicMock(),
+    )
+
+    # Capture the execution object to inspect steps_log
+    added_objects = []
+    mock_db.add = MagicMock(side_effect=lambda obj: added_objects.append(obj))
+
+    with pw_patch, stealth_patch, broadcaster_patch:
+        from app.services.task_executor import TaskExecutor
+
+        executor = TaskExecutor(db=mock_db, vnc_manager=vnc_mock)
+        result = await executor.execute(str(task_id))
+
+    assert result["status"] == "success"
+
+    # Get the execution log object that was created
+    assert len(added_objects) == 1
+    execution = added_objects[0]
+
+    # steps_log should have exactly 1 entry (one form step)
+    assert len(execution.steps_log) == 1, (
+        f"Expected 1 step in steps_log, got {len(execution.steps_log)}"
+    )
+
+    # The single entry should have status "submitted" (final state)
+    assert execution.steps_log[0]["status"] == "submitted"
+
+
+@pytest.mark.asyncio
+async def test_vnc_cleanup_on_execution_exception(mock_db):
+    """VNC session is always cleaned up via finally, even when an unexpected
+    exception occurs during execution (e.g., navigation fails).
+
+    Regression test for: stop_session was only called in the success path,
+    leaving Xvfb/x11vnc processes running on failure or exception.
+    """
+    task_id = uuid.uuid4()
+    fd_id = uuid.uuid4()
+
+    task = make_task(id=task_id)
+    form_def = make_form_definition(
+        id=fd_id, task_id=task_id, step_order=1,
+        page_url="https://example.com/captcha",
+        form_selector="#form", submit_selector="#submit",
+        captcha_detected=True, two_factor_expected=False,
+    )
+
+    _setup_db_for_task(mock_db, task, [form_def], {fd_id: []})
+
+    # Navigation throws an unexpected exception
+    page = _make_mock_page()
+    page.goto = AsyncMock(side_effect=Exception("DNS resolution failed"))
+    browser = _make_mock_browser(_make_mock_context(page))
+    pw_patch, stealth_patch, _ = _build_executor_patches(page, browser)
+
+    vnc_mock = _make_two_phase_vnc_mock()
+
+    broadcaster_patch = patch(
+        "app.services.task_executor.Broadcaster.get_instance",
+        return_value=MagicMock(),
+    )
+
+    with pw_patch, stealth_patch, broadcaster_patch:
+        from app.services.task_executor import TaskExecutor
+
+        executor = TaskExecutor(db=mock_db, vnc_manager=vnc_mock)
+        result = await executor.execute(str(task_id))
+
+    assert result["status"] == "failed"
+    assert "DNS resolution failed" in result["error"]
+
+    # VNC display was reserved (needs_vnc=True due to captcha)
+    vnc_mock.reserve_display.assert_awaited_once()
+
+    # VNC session is cleaned up by the finally block
+    vnc_mock.stop_session.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_vnc_cleanup_on_timeout_failure(mock_db):
+    """VNC session is cleaned up when _vnc_pause times out.
+
+    Regression test for: early return from execute() after _vnc_pause
+    returned False would skip the stop_session call.
+    """
+    task_id = uuid.uuid4()
+    fd_id = uuid.uuid4()
+
+    task = make_task(id=task_id)
+    form_def = make_form_definition(
+        id=fd_id, task_id=task_id, step_order=1,
+        page_url="https://example.com/captcha",
+        form_selector="#form", submit_selector="#submit",
+        captcha_detected=True, two_factor_expected=False,
+    )
+
+    _setup_db_for_task(mock_db, task, [form_def], {fd_id: []})
+
+    page = _make_mock_page()
+    browser = _make_mock_browser(_make_mock_context(page))
+    pw_patch, stealth_patch, _ = _build_executor_patches(page, browser)
+
+    # VNC times out
+    vnc_mock = _make_two_phase_vnc_mock()
+    vnc_mock.wait_for_resume = AsyncMock(return_value=False)
+
+    broadcaster_patch = patch(
+        "app.services.task_executor.Broadcaster.get_instance",
+        return_value=MagicMock(),
+    )
+
+    with pw_patch, stealth_patch, broadcaster_patch:
+        from app.services.task_executor import TaskExecutor
+
+        executor = TaskExecutor(db=mock_db, vnc_manager=vnc_mock)
+        result = await executor.execute(str(task_id))
+
+    assert result["status"] == "failed"
+
+    # VNC session is cleaned up by the finally block even on timeout
+    vnc_mock.stop_session.assert_awaited_once()
