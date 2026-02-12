@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>FormBot - Test Captcha RISOLTO</title>
+  <style>
+    body { font-family: system-ui; max-width: 800px; margin: 40px auto; padding: 0 20px; background: #1a1a2e; color: #eee; }
+    .test-card { background: #16213e; border-radius: 12px; padding: 24px; margin: 20px 0; border: 1px solid #0f3460; }
+    h1 { color: #45e960; }
+    .badge { color: #fff; background: #45e960; display: inline-block; padding: 4px 12px; border-radius: 6px; font-size: 14px; font-weight: bold; color: #1a1a2e; }
+    .form-container { background: #0f3460; padding: 20px; border-radius: 8px; margin: 12px 0; }
+    .success-page { background: #104a20; padding: 30px; border-radius: 8px; margin: 12px 0; text-align: center; }
+    .success-page h2 { color: #45e960; margin: 0 0 10px; }
+    .result { padding: 16px; border-radius: 6px; margin: 16px 0; font-family: monospace; font-size: 13px; line-height: 1.6; }
+    .fail { background: #4a1020; border: 2px solid #e94560; }
+    .pass { background: #104a20; border: 2px solid #45e960; }
+    #status { font-size: 16px; font-weight: bold; margin: 16px 0; padding: 12px; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <h1>&#9989; FormBot - Test Verifica Captcha</h1>
+  <p>Simulazione del flusso VNC Resume: l'utente ha completato il captcha e la pagina e' cambiata.</p>
+
+  <div class="test-card">
+    <span class="badge">TEST 2: CAPTCHA RISOLTO</span>
+    <p>Dopo aver risolto il captcha, la pagina naviga verso la conferma (nessun widget captcha presente).</p>
+    <div class="success-page">
+      <h2>&#10004; Modulo inviato con successo!</h2>
+      <p>Grazie per la tua sottomissione, Mario Rossi.</p>
+      <p>Il tuo riferimento e': <b>#FB-2024-00831</b></p>
+    </div>
+    <div id="result"></div>
+  </div>
+
+  <div id="status"></div>
+</body>
+</html>

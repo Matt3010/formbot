@@ -6,10 +6,8 @@ from playwright.async_api import async_playwright
 from sqlalchemy.orm import Session
 from app.config import settings
 from app.services.stealth import apply_stealth
-from app.services.ollama_client import OllamaClient
 from app.services.vnc_manager import VNCManager
 from app.services.broadcaster import Broadcaster
-from app.prompts.captcha_detection import CAPTCHA_DETECTION_PROMPT
 from app.models.task import Task
 from app.models.form_definition import FormDefinition
 from app.models.form_field import FormField
@@ -21,7 +19,6 @@ class TaskExecutor:
     def __init__(self, db: Session, vnc_manager: VNCManager | None = None):
         self.db = db
         self.vnc_manager = vnc_manager or VNCManager()
-        self.ollama = OllamaClient()
         self.broadcaster = Broadcaster.get_instance()
 
     def _broadcast(self, event: str, data: dict):

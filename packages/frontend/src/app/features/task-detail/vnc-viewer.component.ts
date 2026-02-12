@@ -1,8 +1,9 @@
-import { Component, inject, input, output, computed } from '@angular/core';
+import { Component, inject, input, output, computed, signal } from '@angular/core';
 import { DomSanitizer } from '@angular/platform-browser';
 import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
+import { MatCheckboxModule } from '@angular/material/checkbox';
 import { ApiService } from '../../core/services/api.service';
 import { NotificationService } from '../../core/services/notification.service';
 
@@ -13,6 +14,7 @@ import { NotificationService } from '../../core/services/notification.service';
     MatCardModule,
     MatButtonModule,
     MatIconModule,
+    MatCheckboxModule,
   ],
   template: `
     <mat-card class="vnc-card">
@@ -33,13 +35,24 @@ import { NotificationService } from '../../core/services/notification.service';
         </div>
       </mat-card-content>
 
-      <mat-card-actions align="end">
-        <button mat-raised-button color="primary" (click)="onResume()">
-          <mat-icon>play_arrow</mat-icon> Resume Execution
-        </button>
-        <button mat-button color="warn" (click)="onAbort()">
-          <mat-icon>stop</mat-icon> Abort
-        </button>
+      <mat-card-actions class="vnc-actions">
+        <mat-checkbox
+          [checked]="confirmed()"
+          (change)="confirmed.set($event.checked)"
+          color="primary"
+        >
+          I have completed the required action
+        </mat-checkbox>
+        <div class="action-buttons">
+          <button mat-raised-button color="primary"
+            [disabled]="!confirmed()"
+            (click)="onResume()">
+            <mat-icon>play_arrow</mat-icon> Resume Execution
+          </button>
+          <button mat-button color="warn" (click)="onAbort()">
+            <mat-icon>stop</mat-icon> Abort
+          </button>
+        </div>
       </mat-card-actions>
     </mat-card>
   `,
@@ -57,6 +70,16 @@ import { NotificationService } from '../../core/services/notification.service';
       height: 100%;
       border: none;
     }
+    .vnc-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 16px !important;
+    }
+    .action-buttons {
+      display: flex;
+      gap: 8px;
+    }
   `]
 })
 export class VncViewerComponent {
@@ -68,6 +91,8 @@ export class VncViewerComponent {
   executionId = input.required<string>();
   resumed = output<void>();
 
+  confirmed = signal(false);
+
   safeVncUrl = computed(() =>
     this.sanitizer.bypassSecurityTrustResourceUrl(this.vncUrl())
   );
@@ -76,6 +101,7 @@ export class VncViewerComponent {
     this.api.post(`/executions/${this.executionId()}/resume`).subscribe({
       next: () => {
         this.notify.success('Execution resumed');
+        this.confirmed.set(false);
         this.resumed.emit();
       },
       error: () => this.notify.error('Failed to resume execution')
@@ -86,6 +112,7 @@ export class VncViewerComponent {
     this.api.post(`/executions/${this.executionId()}/abort`).subscribe({
       next: () => {
         this.notify.info('Execution aborted');
+        this.confirmed.set(false);
         this.resumed.emit();
       },
       error: () => this.notify.error('Failed to abort execution')
