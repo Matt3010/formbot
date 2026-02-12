@@ -1,0 +1,26 @@
+export interface Analysis {
+  id: string;
+  url: string;
+  target_url: string | null;
+  login_url: string | null;
+  type: 'simple' | 'login_and_target' | 'next_page';
+  status: 'pending' | 'analyzing' | 'completed' | 'failed' | 'cancelled' | 'timed_out';
+  result: any | null;
+  error: string | null;
+  model: string | null;
+  task_id: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AnalysisListResponse {
+  data: Analysis[];
+  meta: {
+    current_page: number;
+    last_page: number;
+    per_page: number;
+    total: number;
+  };
+}

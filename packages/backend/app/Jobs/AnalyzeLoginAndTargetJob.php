@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Events\AnalysisCompleted;
+use App\Models\Analysis;
 use App\Services\ScraperClient;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -38,11 +39,17 @@ class AnalyzeLoginAndTargetJob implements ShouldQueue
             'target_url' => $this->targetUrl,
         ]);
 
+        $analysis = Analysis::find($this->analysisId);
+        if ($analysis && $analysis->status !== 'cancelled') {
+            $analysis->update(['status' => 'analyzing', 'started_at' => now()]);
+        }
+
         try {
             // The scraper runs this analysis in the background and broadcasts
             // AnalysisCompleted directly via Soketi when done. We only need to
             // start the process; do NOT broadcast here or the frontend will
             // receive a premature {"status":"started"} result.
+            // The scraper will call the internal callback to update the Analysis record.
             $scraperClient->analyzeLoginAndTarget(
                 analysisId: $this->analysisId,
                 loginUrl: $this->loginUrl,
@@ -64,6 +71,14 @@ class AnalyzeLoginAndTargetJob implements ShouldQueue
                 'analysis_id' => $this->analysisId,
                 'error' => $e->getMessage(),
             ]);
+
+            if ($analysis && $analysis->fresh()->status !== 'cancelled') {
+                $analysis->update([
+                    'status' => 'failed',
+                    'error' => $e->getMessage(),
+                    'completed_at' => now(),
+                ]);
+            }
 
             broadcast(new AnalysisCompleted(
                 analysisId: $this->analysisId,

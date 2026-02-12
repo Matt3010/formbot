@@ -45,6 +45,10 @@ import { AuthService } from './core/services/auth.service';
               <mat-icon matListItemIcon>add_circle</mat-icon>
               <span matListItemTitle>New Task</span>
             </a>
+            <a mat-list-item routerLink="/analyses">
+              <mat-icon matListItemIcon>analytics</mat-icon>
+              <span matListItemTitle>Analyses</span>
+            </a>
             <a mat-list-item routerLink="/logs">
               <mat-icon matListItemIcon>list_alt</mat-icon>
               <span matListItemTitle>Logs</span>

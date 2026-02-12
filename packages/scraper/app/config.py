@@ -12,6 +12,10 @@ class Settings(BaseSettings):
     screenshot_dir: str = "/app/screenshots"
     upload_dir: str = "/app/uploads"
 
+    # Backend callback config
+    backend_url: str = "http://backend:8000"
+    internal_api_key: str = "formbot-internal"
+
     # Pusher/Soketi config for broadcasting
     pusher_app_id: str = "100001"
     pusher_app_key: str = "formbot-key"

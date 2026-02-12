@@ -1,7 +1,7 @@
 import { Component, inject, OnInit, signal, ViewChild } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
-import { MatStepperModule } from '@angular/material/stepper';
+import { MatStepperModule, MatStepper } from '@angular/material/stepper';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -9,7 +9,9 @@ import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { TaskService } from '../../core/services/task.service';
 import { NotificationService } from '../../core/services/notification.service';
+import { AnalysisService } from '../../core/services/analysis.service';
 import { Task, FormDefinition, TaskPayload } from '../../core/models/task.model';
+import { Analysis } from '../../core/models/analysis.model';
 import { StepUrlComponent, LoginConfig } from './step-url/step-url.component';
 import { StepFormsComponent } from './step-forms/step-forms.component';
 import { StepFillComponent } from './step-fill/step-fill.component';
@@ -44,7 +46,7 @@ import { StepOptionsComponent, TaskOptions } from './step-options/step-options.c
         <input matInput [formControl]="taskNameControl" placeholder="My Automation Task">
       </mat-form-field>
 
-      <mat-stepper linear #stepper>
+      <mat-stepper [linear]="!resumingFromAnalysis()" #stepper>
         <!-- Step 1: URL & Analyze -->
         <mat-step [completed]="detectedForms().length > 0">
           <ng-template matStepLabel>URL & Analyze</ng-template>
@@ -145,15 +147,19 @@ export class TaskWizardComponent implements OnInit {
   @ViewChild(StepFillComponent) stepFill!: StepFillComponent;
   @ViewChild(StepScheduleComponent) stepSchedule!: StepScheduleComponent;
   @ViewChild(StepOptionsComponent) stepOptions!: StepOptionsComponent;
+  @ViewChild('stepper') stepper!: MatStepper;
 
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private fb = inject(FormBuilder);
   private taskService = inject(TaskService);
+  private analysisService = inject(AnalysisService);
   private notify = inject(NotificationService);
 
   isEditing = signal(false);
   editingTaskId = signal<string | null>(null);
+  resumingFromAnalysis = signal(false);
+  resumeAnalysisId = signal<string | null>(null);
   saving = signal(false);
 
   // Login config
@@ -181,7 +187,92 @@ export class TaskWizardComponent implements OnInit {
       this.isEditing.set(true);
       this.editingTaskId.set(id);
       this.loadTask(id);
+      return;
     }
+
+    // Check for analysis resume flow
+    const analysisId = this.route.snapshot.queryParamMap.get('analysisId');
+    if (analysisId) {
+      this.resumeAnalysisId.set(analysisId);
+      const pending = this.analysisService.consumePendingResume();
+      if (pending && pending.id === analysisId) {
+        this.applyAnalysis(pending);
+      } else {
+        // Fallback: fetch from API (e.g., user refreshed the page)
+        this.analysisService.getAnalysis(analysisId).subscribe({
+          next: (res) => this.applyAnalysis(res.data),
+          error: () => this.notify.error('Failed to load analysis for resume'),
+        });
+      }
+    }
+  }
+
+  private applyAnalysis(analysis: Analysis) {
+    if (analysis.status !== 'completed' || !analysis.result) {
+      this.notify.warn('This analysis is not completed yet');
+      return;
+    }
+
+    this.resumingFromAnalysis.set(true);
+
+    // Build FormDefinition[] from the analysis result
+    const forms: FormDefinition[] = (analysis.result.forms || []).map((form: any, idx: number) => ({
+      id: form.id || `temp-${idx}`,
+      task_id: '',
+      step_order: form.step_order ?? idx + 1,
+      page_url: form.page_url || analysis.url,
+      form_type: form.form_type || 'target',
+      form_selector: form.form_selector || '',
+      submit_selector: form.submit_selector || '',
+      ai_confidence: form.ai_confidence ?? null,
+      captcha_detected: form.captcha_detected ?? false,
+      two_factor_expected: form.two_factor_expected ?? false,
+      fields: (form.fields || []).map((field: any, fIdx: number) => ({
+        id: field.id || `temp-field-${idx}-${fIdx}`,
+        form_definition_id: form.id || `temp-${idx}`,
+        field_name: field.field_name || field.name || '',
+        field_type: field.field_type || field.type || 'text',
+        field_selector: field.field_selector || field.selector || '',
+        field_purpose: field.field_purpose || field.purpose || null,
+        preset_value: field.preset_value || null,
+        is_sensitive: field.is_sensitive ?? false,
+        is_file_upload: field.is_file_upload ?? false,
+        is_required: field.is_required ?? false,
+        options: field.options || null,
+        sort_order: field.sort_order ?? fIdx,
+      })),
+      created_at: '',
+      updated_at: '',
+    }));
+
+    // Set login config if applicable
+    if (analysis.type === 'login_and_target' && analysis.login_url) {
+      this.requiresLogin.set(true);
+      this.loginUrl.set(analysis.login_url);
+    }
+
+    this.detectedForms.set(forms);
+    this.confirmedForms.set(forms);
+
+    // Skip to step 2 (Review Forms) after view is ready
+    setTimeout(() => {
+      if (this.stepUrl) {
+        this.stepUrl.setUrl(analysis.url);
+        if (analysis.type === 'login_and_target' && analysis.login_url) {
+          this.stepUrl.setLoginConfig({
+            requires_login: true,
+            login_url: analysis.login_url,
+            login_every_time: true,
+          });
+        }
+      }
+      if (this.stepForms) this.stepForms.setForms(forms);
+      if (this.stepper) {
+        this.stepper.selectedIndex = 1; // Go to "Review Forms"
+      }
+      // Re-enable linear mode after navigation
+      setTimeout(() => this.resumingFromAnalysis.set(false), 100);
+    });
   }
 
   private loadTask(id: string) {
@@ -331,6 +422,7 @@ export class TaskWizardComponent implements OnInit {
     request.subscribe({
       next: (res) => {
         this.saving.set(false);
+        this.linkAnalysisIfNeeded(res.data.id);
         this.notify.success('Task saved as draft');
         this.router.navigate(['/tasks', res.data.id]);
       },
@@ -351,6 +443,7 @@ export class TaskWizardComponent implements OnInit {
 
     request.subscribe({
       next: (res) => {
+        this.linkAnalysisIfNeeded(res.data.id);
         this.taskService.activateTask(res.data.id).subscribe({
           next: () => {
             this.saving.set(false);
@@ -369,5 +462,14 @@ export class TaskWizardComponent implements OnInit {
         this.notify.error(err.error?.message || 'Failed to save task');
       }
     });
+  }
+
+  private linkAnalysisIfNeeded(taskId: string) {
+    const analysisId = this.resumeAnalysisId();
+    if (analysisId) {
+      this.analysisService.linkTask(analysisId, taskId).subscribe({
+        error: () => console.warn('Failed to link analysis to task'),
+      });
+    }
   }
 }

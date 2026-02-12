@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Analysis;
 use Illuminate\Support\Facades\Broadcast;
 
 Broadcast::channel('tasks.{userId}', function ($user, $userId) {
@@ -10,5 +11,7 @@ Broadcast::channel('execution.{executionId}', function ($user, $executionId) {
     return true; // All authenticated users can listen
 });
 
-// Analysis channels are public (no auth needed) - they use Channel, not PrivateChannel
-// in the AnalysisCompleted event, so no authorization callback is needed here.
+Broadcast::channel('analysis.{analysisId}', function ($user, $analysisId) {
+    $analysis = Analysis::find($analysisId);
+    return $analysis && $analysis->user_id === $user->id;
+});

@@ -133,8 +133,13 @@ Do this **before committing**. A commit with broken tests is not acceptable.
 
 ## Important Patterns
 
+- **WebSocket over polling**: Always prefer WebSocket (Pusher/Soketi) for real-time UI updates instead of HTTP polling. The infrastructure is already in place (`WebSocketService`, Soketi, private channels). Use polling only as a last resort when WebSocket would be overkill (e.g. a one-off data fetch with no live updates needed).
 - The scraper uses `host.docker.internal` to access the test-site from inside Docker.
 - Sensitive form field values are encrypted at rest via `CryptoService` / `ENCRYPTION_KEY`.
 - The `FormAnalyzer._clean_html()` method strips noise from HTML before sending to Ollama — always apply cleaning before the 50KB truncation.
 - The login heuristic (`_detect_login_heuristic`) checks for password inputs in the live DOM and overrides AI's `page_requires_login` to `false` if none are found.
 - Ollama prompts live in `packages/scraper/app/prompts/` — changes here affect AI behavior directly.
+
+## E2E Verification
+
+After rebuilding (`docker compose up --build -d`) and completing an implementation, use the `/playwriter` skill to test the changes end-to-end in the browser. This ensures the full stack works correctly before committing.

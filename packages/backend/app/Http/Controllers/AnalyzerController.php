@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\AnalyzeUrlRequest;
 use App\Jobs\AnalyzeUrlJob;
 use App\Jobs\AnalyzeLoginAndTargetJob;
+use App\Models\Analysis;
 use App\Models\AppSetting;
 use App\Services\CryptoService;
 use App\Services\ScraperClient;
@@ -19,18 +20,25 @@ class AnalyzerController extends Controller
      */
     public function analyze(AnalyzeUrlRequest $request): JsonResponse
     {
-        $analysisId = (string) Str::uuid();
         $model = $request->input('model') ?? AppSetting::get('ollama_model');
 
+        $analysis = Analysis::create([
+            'user_id' => auth()->id(),
+            'url' => $request->input('url'),
+            'type' => 'simple',
+            'status' => 'pending',
+            'model' => $model,
+        ]);
+
         AnalyzeUrlJob::dispatch(
-            analysisId: $analysisId,
+            analysisId: $analysis->id,
             userId: auth()->id(),
             url: $request->input('url'),
             model: $model,
         );
 
         return response()->json([
-            'analysis_id' => $analysisId,
+            'analysis_id' => $analysis->id,
             'message' => 'Analysis started. Results will be sent via WebSocket.',
         ]);
     }
@@ -46,18 +54,25 @@ class AnalyzerController extends Controller
             'cookies' => ['sometimes', 'array'],
         ]);
 
-        $analysisId = (string) Str::uuid();
         $model = $request->input('model') ?? AppSetting::get('ollama_model');
 
+        $analysis = Analysis::create([
+            'user_id' => auth()->id(),
+            'url' => $request->input('url'),
+            'type' => 'next_page',
+            'status' => 'pending',
+            'model' => $model,
+        ]);
+
         AnalyzeUrlJob::dispatch(
-            analysisId: $analysisId,
+            analysisId: $analysis->id,
             userId: auth()->id(),
             url: $request->input('url'),
             model: $model,
         );
 
         return response()->json([
-            'analysis_id' => $analysisId,
+            'analysis_id' => $analysis->id,
             'message' => 'Analysis started. Results will be sent via WebSocket.',
         ]);
     }
@@ -79,9 +94,18 @@ class AnalyzerController extends Controller
             'needs_vnc' => ['sometimes', 'boolean'],
         ]);
 
-        $analysisId = (string) Str::uuid();
         $model = $request->input('model') ?? AppSetting::get('ollama_model');
         $crypto = app(CryptoService::class);
+
+        $analysis = Analysis::create([
+            'user_id' => auth()->id(),
+            'url' => $request->input('target_url'),
+            'target_url' => $request->input('target_url'),
+            'login_url' => $request->input('login_url'),
+            'type' => 'login_and_target',
+            'status' => 'pending',
+            'model' => $model,
+        ]);
 
         // Encrypt sensitive field values
         $loginFields = collect($request->input('login_fields'))->map(function ($field) use ($crypto) {
@@ -93,7 +117,7 @@ class AnalyzerController extends Controller
         })->toArray();
 
         AnalyzeLoginAndTargetJob::dispatch(
-            analysisId: $analysisId,
+            analysisId: $analysis->id,
             userId: auth()->id(),
             loginUrl: $request->input('login_url'),
             targetUrl: $request->input('target_url'),
@@ -105,7 +129,7 @@ class AnalyzerController extends Controller
         );
 
         return response()->json([
-            'analysis_id' => $analysisId,
+            'analysis_id' => $analysis->id,
             'message' => 'Login-aware analysis started. Results will be sent via WebSocket.',
         ]);
     }

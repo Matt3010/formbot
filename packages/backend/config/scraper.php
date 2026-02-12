@@ -6,4 +6,6 @@ return [
 
     'timeout' => env('SCRAPER_TIMEOUT', 600),
 
+    'internal_key' => env('INTERNAL_API_KEY', 'formbot-internal'),
+
 ];

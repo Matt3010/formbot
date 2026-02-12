@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\AnalyzerController;
+use App\Http\Controllers\AnalysisController;
 use App\Http\Controllers\ExecutionController;
 use App\Http\Controllers\SettingsController;
 
@@ -53,6 +54,15 @@ Route::middleware('auth:api')->group(function () {
     Route::get('/settings', [SettingsController::class, 'index']);
     Route::put('/settings', [SettingsController::class, 'update']);
 
+    // Analyses
+    Route::get('/analyses', [AnalysisController::class, 'index']);
+    Route::get('/analyses/{analysis}', [AnalysisController::class, 'show']);
+    Route::post('/analyses/{analysis}/cancel', [AnalysisController::class, 'cancel']);
+    Route::post('/analyses/{analysis}/link-task', [AnalysisController::class, 'linkTask']);
+
     // Logs
     Route::get('/logs', [ExecutionController::class, 'logs']);
 });
+
+// Internal routes (scraper callback, protected by X-Internal-Key header)
+Route::post('/internal/analyses/{id}/result', [AnalysisController::class, 'storeResult']);

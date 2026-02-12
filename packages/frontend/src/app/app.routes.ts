@@ -7,6 +7,7 @@ export const routes: Routes = [
   { path: '', canActivate: [authGuard], children: [
     { path: '', redirectTo: 'dashboard', pathMatch: 'full' },
     { path: 'dashboard', loadComponent: () => import('./features/dashboard/dashboard.component').then(m => m.DashboardComponent) },
+    { path: 'analyses', loadComponent: () => import('./features/analyses/analyses.component').then(m => m.AnalysesComponent) },
     { path: 'tasks/new', loadComponent: () => import('./features/task-wizard/task-wizard.component').then(m => m.TaskWizardComponent) },
     { path: 'tasks/:id/edit', loadComponent: () => import('./features/task-wizard/task-wizard.component').then(m => m.TaskWizardComponent) },
     { path: 'tasks/:id', loadComponent: () => import('./features/task-detail/task-detail.component').then(m => m.TaskDetailComponent) },

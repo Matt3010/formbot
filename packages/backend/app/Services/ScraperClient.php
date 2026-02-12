@@ -183,6 +183,29 @@ class ScraperClient
     }
 
     /**
+     * Cancel a running analysis on the scraper.
+     */
+    public function cancelAnalysis(string $analysisId): array
+    {
+        $response = Http::timeout(30)
+            ->post("{$this->baseUrl}/analyze/{$analysisId}/cancel");
+
+        if (!$response->successful()) {
+            Log::warning('Scraper cancelAnalysis failed', [
+                'analysis_id' => $analysisId,
+                'status' => $response->status(),
+                'body' => $response->body(),
+            ]);
+
+            throw new \RuntimeException(
+                'Failed to cancel analysis: ' . ($response->json('detail') ?? $response->body())
+            );
+        }
+
+        return $response->json();
+    }
+
+    /**
      * Start a VNC session for manual intervention.
      */
     public function startVnc(string $executionId): array

@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Events\AnalysisCompleted;
+use App\Models\Analysis;
 use App\Services\ScraperClient;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -32,11 +33,26 @@ class AnalyzeUrlJob implements ShouldQueue
             'url' => $this->url,
         ]);
 
+        $analysis = Analysis::find($this->analysisId);
+        if ($analysis && $analysis->status !== 'cancelled') {
+            $analysis->update(['status' => 'analyzing', 'started_at' => now()]);
+        }
+
         try {
             $result = $scraperClient->analyze($this->url, $this->model, $this->analysisId);
 
             // Check if scraper returned an error in the response body
             $scraperError = $result['error'] ?? null;
+
+            // Update Analysis record (skip if cancelled)
+            if ($analysis && $analysis->fresh()->status !== 'cancelled') {
+                $analysis->update([
+                    'status' => $scraperError ? 'failed' : 'completed',
+                    'result' => $result,
+                    'error' => $scraperError,
+                    'completed_at' => now(),
+                ]);
+            }
 
             broadcast(new AnalysisCompleted(
                 analysisId: $this->analysisId,
@@ -55,6 +71,14 @@ class AnalyzeUrlJob implements ShouldQueue
                 'analysis_id' => $this->analysisId,
                 'error' => $e->getMessage(),
             ]);
+
+            if ($analysis && $analysis->fresh()->status !== 'cancelled') {
+                $analysis->update([
+                    'status' => 'failed',
+                    'error' => $e->getMessage(),
+                    'completed_at' => now(),
+                ]);
+            }
 
             broadcast(new AnalysisCompleted(
                 analysisId: $this->analysisId,

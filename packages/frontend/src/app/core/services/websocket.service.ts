@@ -197,7 +197,7 @@ export class WebSocketService {
 
   /**
    * Subscribe to analysis results for a specific analysis ID.
-   * Uses a public channel (no auth needed).
+   * Uses a private channel (auth required).
    * Auto-unsubscribes after receiving the result.
    */
   waitForAnalysis(analysisId: string): Observable<any> {
@@ -206,7 +206,7 @@ export class WebSocketService {
         this.connect();
       }
 
-      const channelName = `analysis.${analysisId}`;
+      const channelName = `private-analysis.${analysisId}`;
       const channel = this.pusher.subscribe(channelName);
       this.subscribedChannels.set(channelName, channel);
 
@@ -233,7 +233,7 @@ export class WebSocketService {
         this.connect();
       }
 
-      const channelName = `analysis.${analysisId}`;
+      const channelName = `private-analysis.${analysisId}`;
       let channel = this.subscribedChannels.get(channelName);
       if (!channel) {
         channel = this.pusher.subscribe(channelName);

@@ -37,6 +37,6 @@ class Broadcaster:
         self.trigger(f"private-execution.{execution_id}", event, data)
 
     def trigger_analysis(self, analysis_id: str, event: str, data: dict):
-        """Broadcast an AI analysis event (public channel)."""
+        """Broadcast an AI analysis event (private channel)."""
         data["analysis_id"] = str(analysis_id)
-        self.trigger(f"analysis.{analysis_id}", event, data)
+        self.trigger(f"private-analysis.{analysis_id}", event, data)
