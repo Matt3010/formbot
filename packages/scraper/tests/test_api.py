@@ -93,7 +93,7 @@ async def test_analyze_endpoint_missing_url():
 async def test_analyze_dynamic_endpoint():
     """POST /analyze/dynamic returns analysis for dynamic page re-analysis."""
     mock_analyzer = AsyncMock()
-    mock_analyzer.analyze_dynamic = AsyncMock(return_value=SIMPLE_LOGIN_ANALYSIS)
+    mock_analyzer.analyze_dynamic = AsyncMock(return_value=copy.deepcopy(SIMPLE_LOGIN_ANALYSIS))
 
     with patch("app.api.analyze.FormAnalyzer", return_value=mock_analyzer):
         app = _get_app()

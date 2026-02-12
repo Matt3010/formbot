@@ -291,7 +291,7 @@ async def test_analyze_stealth_applied_by_default():
         return_value=pw_cm,
     )
     ollama_mock = AsyncMock()
-    ollama_mock.parse_json_response = AsyncMock(return_value=SIMPLE_LOGIN_ANALYSIS)
+    ollama_mock.parse_json_response = AsyncMock(return_value=copy.deepcopy(SIMPLE_LOGIN_ANALYSIS))
     ollama_patch = patch(
         "app.services.form_analyzer.OllamaClient",
         return_value=ollama_mock,
@@ -324,7 +324,7 @@ async def test_analyze_stealth_skipped():
         return_value=pw_cm,
     )
     ollama_mock = AsyncMock()
-    ollama_mock.parse_json_response = AsyncMock(return_value=SIMPLE_LOGIN_ANALYSIS)
+    ollama_mock.parse_json_response = AsyncMock(return_value=copy.deepcopy(SIMPLE_LOGIN_ANALYSIS))
     ollama_patch = patch(
         "app.services.form_analyzer.OllamaClient",
         return_value=ollama_mock,

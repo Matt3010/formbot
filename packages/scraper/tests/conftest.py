@@ -1,5 +1,6 @@
 """Shared fixtures for FormBot scraper tests."""
 
+import copy
 import uuid
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -316,7 +317,7 @@ def mock_ollama():
     """Return a mock OllamaClient whose parse_json_response is pre-configured."""
     client = AsyncMock()
     client.generate = AsyncMock(return_value='{"forms": []}')
-    client.parse_json_response = AsyncMock(return_value=SIMPLE_LOGIN_ANALYSIS)
+    client.parse_json_response = AsyncMock(return_value=copy.deepcopy(SIMPLE_LOGIN_ANALYSIS))
     client.is_available = AsyncMock(return_value=True)
     return client
 
