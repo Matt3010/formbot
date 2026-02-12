@@ -7,7 +7,7 @@ from app.config import settings
 class OllamaClient:
     def __init__(self, base_url: str = None, model: str = None):
         self.base_url = base_url or settings.ollama_url
-        self.model = model or "llama3.2:1b"
+        self.model = model or "llama3.1:8b"
 
     async def generate(self, prompt: str, model: str = None) -> str:
         """Send prompt to Ollama and get response."""
@@ -19,7 +19,8 @@ class OllamaClient:
                     "model": target_model,
                     "prompt": prompt,
                     "stream": False,
-                    "format": "json"
+                    "format": "json",
+                    "temperature": 0
                 }
             )
             response.raise_for_status()
@@ -41,7 +42,8 @@ class OllamaClient:
                     "model": target_model,
                     "prompt": prompt,
                     "stream": True,
-                    "format": "json"
+                    "format": "json",
+                    "temperature": 0
                 }
             ) as response:
                 response.raise_for_status()

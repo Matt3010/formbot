@@ -294,11 +294,11 @@ async def test_is_available_false_on_non_200():
 
 @pytest.mark.asyncio
 async def test_default_model():
-    """OllamaClient uses default model llama3.2:1b when none specified."""
+    """OllamaClient uses default model llama3.1:8b when none specified."""
     from app.services.ollama_client import OllamaClient
 
     client = OllamaClient(base_url="http://test:11434")
-    assert client.model == "llama3.2:1b"
+    assert client.model == "llama3.1:8b"
 
 
 @pytest.mark.asyncio

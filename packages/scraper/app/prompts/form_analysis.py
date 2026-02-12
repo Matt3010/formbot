@@ -36,6 +36,10 @@ Rules:
 - Identify CAPTCHA elements (iframes, divs with captcha-related classes)
 - Detect 2FA elements (OTP inputs, authenticator prompts)
 - If no forms found, return {"forms": [], "page_requires_login": false}
+- Each field MUST have its own separate object in the "fields" array. Never group multiple fields into a single entry.
+- Each "field_selector" MUST be a single, valid CSS selector that uniquely identifies one element (e.g. "#email", "input[name='phone']"). Never combine multiple selectors in one string.
+- "page_requires_login" must be true ONLY if the page contains a form with a visible password field that blocks access to the main content. A contact form, newsletter signup, search form, or any form without a password field is NOT a login page.
+- A form that only asks for email, name, phone, or message is a contact/data-entry form, NOT a login form.
 
 HTML to analyze:
 {html_content}
