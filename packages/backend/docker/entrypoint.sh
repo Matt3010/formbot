@@ -32,13 +32,17 @@ if [ ! -f /app/storage/passport/oauth-private.key ] || [ ! -f /app/storage/passp
   # Move keys to persistent volume
   mv /app/storage/oauth-private.key /app/storage/passport/oauth-private.key 2>/dev/null || true
   mv /app/storage/oauth-public.key /app/storage/passport/oauth-public.key 2>/dev/null || true
+  # Fix ownership so www-data can read them
+  chown www-data:www-data /app/storage/passport/oauth-private.key /app/storage/passport/oauth-public.key 2>/dev/null || true
+  chmod 644 /app/storage/passport/oauth-private.key /app/storage/passport/oauth-public.key 2>/dev/null || true
   # Re-create symlinks
   ln -sf /app/storage/passport/oauth-private.key /app/storage/oauth-private.key
   ln -sf /app/storage/passport/oauth-public.key /app/storage/oauth-public.key
   echo "Passport keys generated and persisted."
 fi
 
-# Ensure correct permissions
+# Ensure correct permissions (www-data must be able to read the keys)
+chown www-data:www-data /app/storage/passport/oauth-private.key /app/storage/passport/oauth-public.key 2>/dev/null || true
 chmod 644 /app/storage/passport/oauth-private.key /app/storage/passport/oauth-public.key 2>/dev/null || true
 
 # Create personal access client if none exists

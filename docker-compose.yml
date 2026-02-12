@@ -59,6 +59,7 @@ services:
       context: ./packages/backend
       dockerfile: Dockerfile
     command: php artisan queue:work redis --sleep=3 --tries=3 --max-time=3600
+    restart: unless-stopped
     environment:
       - APP_KEY=${APP_KEY}
       - APP_DEBUG=${APP_DEBUG:-true}
