@@ -262,4 +262,108 @@ class ScraperClient
 
         return $response->json();
     }
+
+    /**
+     * Start an interactive analysis session with VNC for field editing.
+     */
+    public function startInteractiveAnalysis(string $url, string $analysisId): array
+    {
+        $response = Http::timeout($this->timeout)
+            ->post("{$this->baseUrl}/analyze/interactive", [
+                'url' => $url,
+                'analysis_id' => $analysisId,
+            ]);
+
+        if (!$response->successful()) {
+            Log::error('Scraper startInteractiveAnalysis failed', [
+                'url' => $url,
+                'analysis_id' => $analysisId,
+                'status' => $response->status(),
+                'body' => $response->body(),
+            ]);
+
+            throw new \RuntimeException(
+                'Failed to start interactive analysis: ' . ($response->json('detail') ?? $response->body())
+            );
+        }
+
+        return $response->json();
+    }
+
+    /**
+     * Send an editing command to the scraper (mode, focus, test-selector, etc.).
+     */
+    public function sendEditingCommand(string $analysisId, string $command, array $payload = []): array
+    {
+        $endpointMap = [
+            'mode' => '/editing/mode',
+            'update-fields' => '/editing/update-fields',
+            'focus-field' => '/editing/focus-field',
+            'test-selector' => '/editing/test-selector',
+        ];
+
+        $endpoint = $endpointMap[$command] ?? null;
+        if (!$endpoint) {
+            throw new \RuntimeException("Unknown editing command: {$command}");
+        }
+
+        $response = Http::timeout(30)
+            ->post("{$this->baseUrl}{$endpoint}", array_merge(
+                ['analysis_id' => $analysisId],
+                $payload,
+            ));
+
+        if (!$response->successful()) {
+            throw new \RuntimeException(
+                "Editing command '{$command}' failed: " . ($response->json('detail') ?? $response->body())
+            );
+        }
+
+        return $response->json();
+    }
+
+    /**
+     * Stop an editing session on the scraper (cleanup browser + VNC).
+     */
+    public function stopEditingSession(string $analysisId): array
+    {
+        $response = Http::timeout(30)
+            ->post("{$this->baseUrl}/editing/cleanup", [
+                'analysis_id' => $analysisId,
+            ]);
+
+        if (!$response->successful()) {
+            Log::warning('Scraper stopEditingSession failed', [
+                'analysis_id' => $analysisId,
+                'status' => $response->status(),
+                'body' => $response->body(),
+            ]);
+
+            throw new \RuntimeException(
+                'Failed to stop editing session: ' . ($response->json('detail') ?? $response->body())
+            );
+        }
+
+        return $response->json();
+    }
+
+    /**
+     * Navigate to a different step URL during editing.
+     */
+    public function navigateEditingStep(string $analysisId, string $url): array
+    {
+        $response = Http::timeout(30)
+            ->post("{$this->baseUrl}/editing/navigate", [
+                'analysis_id' => $analysisId,
+                'url' => $url,
+            ]);
+
+        if (!$response->successful()) {
+            throw new \RuntimeException(
+                'Failed to navigate editing step: ' . ($response->json('detail') ?? $response->body())
+            );
+        }
+
+        return $response->json();
+    }
 }

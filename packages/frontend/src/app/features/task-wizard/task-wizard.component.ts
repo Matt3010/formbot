@@ -10,13 +10,13 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { TaskService } from '../../core/services/task.service';
 import { NotificationService } from '../../core/services/notification.service';
 import { AnalysisService } from '../../core/services/analysis.service';
+import { VncEditorService } from '../../core/services/vnc-editor.service';
 import { Task, FormDefinition, TaskPayload } from '../../core/models/task.model';
 import { Analysis } from '../../core/models/analysis.model';
 import { StepUrlComponent, LoginConfig } from './step-url/step-url.component';
-import { StepFormsComponent } from './step-forms/step-forms.component';
-import { StepFillComponent } from './step-fill/step-fill.component';
 import { StepScheduleComponent, ScheduleData } from './step-schedule/step-schedule.component';
 import { StepOptionsComponent, TaskOptions } from './step-options/step-options.component';
+import { VncFormEditorComponent } from './vnc-form-editor/vnc-form-editor.component';
 
 @Component({
   selector: 'app-task-wizard',
@@ -30,13 +30,12 @@ import { StepOptionsComponent, TaskOptions } from './step-options/step-options.c
     MatInputModule,
     MatProgressSpinnerModule,
     StepUrlComponent,
-    StepFormsComponent,
-    StepFillComponent,
     StepScheduleComponent,
     StepOptionsComponent,
+    VncFormEditorComponent,
   ],
   template: `
-    <div class="wizard-container">
+    <div class="wizard-container vnc-active">
       <div class="flex items-center justify-between mb-2">
         <h1>{{ isEditing() ? 'Edit Task' : 'Create New Task' }}</h1>
       </div>
@@ -55,47 +54,30 @@ import { StepOptionsComponent, TaskOptions } from './step-options/step-options.c
             (loginConfigChanged)="onLoginConfigChanged($event)"
           />
           <div class="step-actions mt-2">
-            <button mat-raised-button color="primary" matStepperNext [disabled]="detectedForms().length === 0">
+            <button mat-raised-button color="primary" (click)="proceedToVncEditor()" [disabled]="detectedForms().length === 0">
               Next <mat-icon>arrow_forward</mat-icon>
             </button>
           </div>
         </mat-step>
 
-        <!-- Step 2: Review Forms -->
-        <mat-step [completed]="confirmedForms().length > 0">
-          <ng-template matStepLabel>Review Forms</ng-template>
-          <app-step-forms
-            [forms]="detectedForms()"
-            (formsConfirmed)="onFormsConfirmed($event)"
+        <!-- Step 2: Configure Forms (VNC Editor) -->
+        <mat-step [completed]="confirmedFromVnc().length > 0">
+          <ng-template matStepLabel>Configure Forms</ng-template>
+          <app-vnc-form-editor
+            [analysisId]="vncAnalysisId()!"
+            [analysisResult]="vncAnalysisResult()"
+            [resumeCorrections]="vncResumeCorrections()"
+            (confirmed)="onVncConfirmed($event)"
+            (cancelled)="onVncCancelled()"
           />
           <div class="step-actions mt-2">
             <button mat-button matStepperPrevious>
               <mat-icon>arrow_back</mat-icon> Back
             </button>
-            <button mat-raised-button color="primary" matStepperNext>
-              Next <mat-icon>arrow_forward</mat-icon>
-            </button>
           </div>
         </mat-step>
 
-        <!-- Step 3: Fill Fields -->
-        <mat-step>
-          <ng-template matStepLabel>Fill Fields</ng-template>
-          <app-step-fill
-            [forms]="confirmedForms().length > 0 ? confirmedForms() : detectedForms()"
-            (filledForms)="onFormsFilled($event)"
-          />
-          <div class="step-actions mt-2">
-            <button mat-button matStepperPrevious>
-              <mat-icon>arrow_back</mat-icon> Back
-            </button>
-            <button mat-raised-button color="primary" matStepperNext>
-              Next <mat-icon>arrow_forward</mat-icon>
-            </button>
-          </div>
-        </mat-step>
-
-        <!-- Step 4: Schedule -->
+        <!-- Step 3: Schedule -->
         <mat-step>
           <ng-template matStepLabel>Schedule</ng-template>
           <app-step-schedule
@@ -111,7 +93,7 @@ import { StepOptionsComponent, TaskOptions } from './step-options/step-options.c
           </div>
         </mat-step>
 
-        <!-- Step 5: Options -->
+        <!-- Step 4: Options -->
         <mat-step>
           <ng-template matStepLabel>Options</ng-template>
           <app-step-options
@@ -138,15 +120,15 @@ import { StepOptionsComponent, TaskOptions } from './step-options/step-options.c
   `,
   styles: [`
     .wizard-container { max-width: 900px; padding-bottom: 48px; }
+    .wizard-container.vnc-active { max-width: 100%; }
     .step-actions { display: flex; gap: 12px; align-items: center; }
   `]
 })
 export class TaskWizardComponent implements OnInit {
   @ViewChild(StepUrlComponent) stepUrl!: StepUrlComponent;
-  @ViewChild(StepFormsComponent) stepForms!: StepFormsComponent;
-  @ViewChild(StepFillComponent) stepFill!: StepFillComponent;
   @ViewChild(StepScheduleComponent) stepSchedule!: StepScheduleComponent;
   @ViewChild(StepOptionsComponent) stepOptions!: StepOptionsComponent;
+  @ViewChild(VncFormEditorComponent) vncEditor!: VncFormEditorComponent;
   @ViewChild('stepper') stepper!: MatStepper;
 
   private route = inject(ActivatedRoute);
@@ -155,6 +137,7 @@ export class TaskWizardComponent implements OnInit {
   private taskService = inject(TaskService);
   private analysisService = inject(AnalysisService);
   private notify = inject(NotificationService);
+  private vncEditorService = inject(VncEditorService);
 
   isEditing = signal(false);
   editingTaskId = signal<string | null>(null);
@@ -167,10 +150,14 @@ export class TaskWizardComponent implements OnInit {
   loginUrl = signal<string | null>(null);
   loginEveryTime = signal(true);
 
+  // VNC editor state
+  vncAnalysisId = signal<string | null>(null);
+  vncAnalysisResult = signal<any>(null);
+  vncResumeCorrections = signal<any>(null);
+
   taskNameControl = this.fb.nonNullable.control('', Validators.required);
   detectedForms = signal<FormDefinition[]>([]);
-  confirmedForms = signal<FormDefinition[]>([]);
-  filledForms = signal<FormDefinition[]>([]);
+  confirmedFromVnc = signal<FormDefinition[]>([]);
   scheduleData = signal<ScheduleData>({ schedule_type: 'once', schedule_cron: null, schedule_at: null });
   taskOptions = signal<TaskOptions>({
     is_dry_run: false,
@@ -192,10 +179,15 @@ export class TaskWizardComponent implements OnInit {
 
     // Check for analysis resume flow
     const analysisId = this.route.snapshot.queryParamMap.get('analysisId');
+    const editingMode = this.route.snapshot.queryParamMap.get('editing');
     if (analysisId) {
       this.resumeAnalysisId.set(analysisId);
       const pending = this.analysisService.consumePendingResume();
-      if (pending && pending.id === analysisId) {
+
+      if (editingMode === 'resume') {
+        // Resume VNC editing from saved draft
+        this.resumeVncEditing(analysisId, pending);
+      } else if (pending && pending.id === analysisId) {
         this.applyAnalysis(pending);
       } else {
         // Fallback: fetch from API (e.g., user refreshed the page)
@@ -205,6 +197,44 @@ export class TaskWizardComponent implements OnInit {
         });
       }
     }
+  }
+
+  private resumeVncEditing(analysisId: string, pending: Analysis | null) {
+    this.resumingFromAnalysis.set(true);
+    this.vncAnalysisId.set(analysisId);
+
+    // Set URL in step-url and load corrections if we have the analysis data
+    if (pending) {
+      if (pending.user_corrections) {
+        this.vncResumeCorrections.set(pending.user_corrections);
+      }
+      setTimeout(() => {
+        if (this.stepUrl) {
+          this.stepUrl.setUrl(pending.url);
+        }
+      });
+    }
+
+    // Call resume endpoint to re-open VNC with saved draft
+    this.vncEditorService.resumeEditing(analysisId).subscribe({
+      next: (res) => {
+        // Backend may return user_corrections in response
+        if (res?.user_corrections && !this.vncResumeCorrections()) {
+          this.vncResumeCorrections.set(res.user_corrections);
+        }
+        this.notify.info('Resuming visual editing session...');
+        setTimeout(() => {
+          if (this.stepper) {
+            this.stepper.selectedIndex = 1;
+          }
+          setTimeout(() => this.resumingFromAnalysis.set(false), 100);
+        });
+      },
+      error: (err) => {
+        this.notify.error(err.error?.message || 'Failed to resume editing session');
+        this.resumingFromAnalysis.set(false);
+      },
+    });
   }
 
   private applyAnalysis(analysis: Analysis) {
@@ -252,9 +282,8 @@ export class TaskWizardComponent implements OnInit {
     }
 
     this.detectedForms.set(forms);
-    this.confirmedForms.set(forms);
 
-    // Skip to step 2 (Review Forms) after view is ready
+    // Skip to step 2 (Configure Forms) after view is ready
     setTimeout(() => {
       if (this.stepUrl) {
         this.stepUrl.setUrl(analysis.url);
@@ -266,9 +295,8 @@ export class TaskWizardComponent implements OnInit {
           });
         }
       }
-      if (this.stepForms) this.stepForms.setForms(forms);
       if (this.stepper) {
-        this.stepper.selectedIndex = 1; // Go to "Review Forms"
+        this.stepper.selectedIndex = 1; // Go to "Configure Forms"
       }
       // Re-enable linear mode after navigation
       setTimeout(() => this.resumingFromAnalysis.set(false), 100);
@@ -282,8 +310,7 @@ export class TaskWizardComponent implements OnInit {
         this.taskNameControl.setValue(task.name);
         if (task.form_definitions?.length) {
           this.detectedForms.set(task.form_definitions);
-          this.confirmedForms.set(task.form_definitions);
-          this.filledForms.set(task.form_definitions);
+          this.confirmedFromVnc.set(task.form_definitions);
         }
         this.scheduleData.set({
           schedule_type: task.schedule_type,
@@ -318,8 +345,6 @@ export class TaskWizardComponent implements OnInit {
               });
             }
           }
-          if (this.stepForms) this.stepForms.setForms(task.form_definitions);
-          if (this.stepFill) this.stepFill.setForms(task.form_definitions);
           if (this.stepSchedule) this.stepSchedule.setSchedule(this.scheduleData());
           if (this.stepOptions) this.stepOptions.setOptions(this.taskOptions());
         });
@@ -336,15 +361,53 @@ export class TaskWizardComponent implements OnInit {
 
   onFormsDetected(forms: FormDefinition[]) {
     this.detectedForms.set(forms);
-    this.confirmedForms.set(forms);
   }
 
-  onFormsConfirmed(forms: FormDefinition[]) {
-    this.confirmedForms.set(forms);
+  proceedToVncEditor() {
+    const analysisId = this.stepUrl.currentAnalysisId();
+    if (!analysisId) {
+      this.notify.error('No analysis available. Please analyze the URL first.');
+      return;
+    }
+
+    this.vncAnalysisId.set(analysisId);
+    this.vncAnalysisResult.set(null);
+
+    // Start the interactive session via backend
+    this.taskService.analyzeInteractive(analysisId).subscribe({
+      next: () => {
+        this.notify.info('Starting visual editor...');
+        // Temporarily disable linear mode so we can advance to step 2
+        this.resumingFromAnalysis.set(true);
+        setTimeout(() => {
+          if (this.stepper) {
+            this.stepper.selectedIndex = 1;
+          }
+          setTimeout(() => this.resumingFromAnalysis.set(false), 100);
+        });
+      },
+      error: (err) => {
+        this.notify.error(err.error?.message || 'Failed to start visual editor');
+      },
+    });
   }
 
-  onFormsFilled(forms: FormDefinition[]) {
-    this.filledForms.set(forms);
+  onVncConfirmed(forms: FormDefinition[]) {
+    this.confirmedFromVnc.set(forms);
+    this.notify.success('Forms confirmed via visual editor');
+
+    // Advance to Schedule step
+    setTimeout(() => {
+      if (this.stepper) {
+        this.stepper.selectedIndex = 2;
+      }
+    });
+  }
+
+  onVncCancelled() {
+    this.vncAnalysisId.set(null);
+    this.vncResumeCorrections.set(null);
+    this.notify.info('Visual verification cancelled');
   }
 
   onScheduleChanged(data: ScheduleData) {
@@ -356,8 +419,7 @@ export class TaskWizardComponent implements OnInit {
   }
 
   private buildTaskPayload(status: string): TaskPayload {
-    const forms = this.filledForms().length > 0 ? this.filledForms() :
-                  this.confirmedForms().length > 0 ? this.confirmedForms() :
+    const forms = this.confirmedFromVnc().length > 0 ? this.confirmedFromVnc() :
                   this.detectedForms();
     const schedule = this.scheduleData();
     const options = this.taskOptions();

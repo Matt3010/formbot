@@ -6,6 +6,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\AnalyzerController;
 use App\Http\Controllers\AnalysisController;
+use App\Http\Controllers\EditingController;
 use App\Http\Controllers\ExecutionController;
 use App\Http\Controllers\SettingsController;
 
@@ -59,6 +60,17 @@ Route::middleware('auth:api')->group(function () {
     Route::get('/analyses/{analysis}', [AnalysisController::class, 'show']);
     Route::post('/analyses/{analysis}/cancel', [AnalysisController::class, 'cancel']);
     Route::post('/analyses/{analysis}/link-task', [AnalysisController::class, 'linkTask']);
+
+    // Editing (VNC form editor)
+    Route::prefix('analyses/{analysis}/editing')->group(function () {
+        Route::post('/start', [EditingController::class, 'start']);
+        Route::post('/resume', [EditingController::class, 'resume']);
+        Route::patch('/draft', [EditingController::class, 'draft']);
+        Route::post('/command', [EditingController::class, 'command']);
+        Route::post('/confirm', [EditingController::class, 'confirm']);
+        Route::post('/cancel', [EditingController::class, 'cancel']);
+        Route::post('/step', [EditingController::class, 'step']);
+    });
 
     // Logs
     Route::get('/logs', [ExecutionController::class, 'logs']);

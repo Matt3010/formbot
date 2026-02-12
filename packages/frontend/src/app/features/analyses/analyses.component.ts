@@ -49,6 +49,7 @@ import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog.c
               <mat-option value="failed">Failed</mat-option>
               <mat-option value="cancelled">Cancelled</mat-option>
               <mat-option value="timed_out">Timed Out</mat-option>
+              <mat-option value="editing">Editing</mat-option>
             </mat-select>
           </mat-form-field>
         </div>
@@ -68,6 +69,7 @@ import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog.c
               <app-analysis-card
                 [analysis]="analysis"
                 (resume)="resumeAnalysis(analysis)"
+                (resumeEditing)="resumeEditingSession(analysis)"
                 (cancel)="cancelAnalysis(analysis)"
                 (viewTask)="viewTask(analysis)"
               />
@@ -172,6 +174,11 @@ export class AnalysesComponent implements OnInit, OnDestroy {
         });
       }
     });
+  }
+
+  resumeEditingSession(analysis: Analysis) {
+    this.analysisService.setPendingResume(analysis);
+    this.router.navigate(['/tasks/new'], { queryParams: { analysisId: analysis.id, editing: 'resume' } });
   }
 
   viewTask(analysis: Analysis) {

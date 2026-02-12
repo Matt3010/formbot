@@ -54,6 +54,54 @@ class LoginAndAnalyzeTargetRequest(BaseModel):
     ollama_model: Optional[str] = None
 
 
+class InteractiveAnalyzeRequest(BaseModel):
+    url: str
+    analysis_id: str
+    ollama_model: Optional[str] = None
+
+
+@router.post("/analyze/interactive")
+async def analyze_url_interactive(request: InteractiveAnalyzeRequest):
+    """Start interactive analysis with VNC — keeps browser open for field editing."""
+    vnc_manager = get_vnc_manager()
+    analyzer = FormAnalyzer(ollama_model=request.ollama_model)
+    registry = AnalysisRegistry.get_instance()
+
+    async def _run():
+        broadcaster = Broadcaster.get_instance()
+        try:
+            result = await analyzer.analyze_url_interactive(
+                url=request.url,
+                analysis_id=request.analysis_id,
+                vnc_manager=vnc_manager,
+            )
+            broadcaster.trigger_analysis(request.analysis_id, "AnalysisCompleted", {
+                "result": result,
+                "error": result.get("error"),
+            })
+            await _notify_backend_result(request.analysis_id, result, result.get("error"))
+        except asyncio.CancelledError:
+            broadcaster.trigger_analysis(request.analysis_id, "AnalysisCompleted", {
+                "result": {},
+                "error": "Cancelled by user",
+            })
+            await _notify_backend_result(request.analysis_id, {}, "Cancelled by user")
+        except Exception as e:
+            import traceback
+            print(f"[INTERACTIVE_ANALYSIS] EXCEPTION: {e}\n{traceback.format_exc()}", flush=True)
+            broadcaster.trigger_analysis(request.analysis_id, "AnalysisCompleted", {
+                "result": {},
+                "error": str(e),
+            })
+            await _notify_backend_result(request.analysis_id, {}, str(e))
+        finally:
+            registry.unregister(request.analysis_id)
+
+    task = asyncio.create_task(_run())
+    registry.register(request.analysis_id, task)
+    return {"status": "started", "analysis_id": request.analysis_id}
+
+
 @router.post("/analyze/dynamic")
 async def analyze_dynamic(request: DynamicAnalyzeRequest):
     analyzer = FormAnalyzer()

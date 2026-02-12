@@ -30,6 +30,19 @@ class CleanupStaleAnalyses extends Command
             $this->info('No stale analyses found.');
         }
 
+        // Cleanup expired editing sessions
+        $editingCount = Analysis::where('editing_status', 'active')
+            ->where('editing_expires_at', '<', now())
+            ->update([
+                'editing_status' => 'cancelled',
+                'status' => 'completed',
+            ]);
+
+        if ($editingCount > 0) {
+            $this->info("Cancelled {$editingCount} expired editing session(s).");
+            Log::info('CleanupStaleAnalyses: expired editing sessions', ['count' => $editingCount]);
+        }
+
         return Command::SUCCESS;
     }
 }

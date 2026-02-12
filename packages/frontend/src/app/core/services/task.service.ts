@@ -79,6 +79,10 @@ export class TaskService {
     return this.api.post('/analyze/resume-vnc', { session_id: sessionId, analysis_id: analysisId });
   }
 
+  analyzeInteractive(analysisId: string): Observable<any> {
+    return this.api.post(`/analyses/${analysisId}/editing/start`);
+  }
+
   validateSelectors(taskId: string): Observable<any> {
     return this.api.post('/validate-selectors', { task_id: taskId });
   }

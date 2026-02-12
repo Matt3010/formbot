@@ -1,3 +1,4 @@
+import os
 import re
 import time
 from typing import Optional
@@ -5,6 +6,8 @@ from playwright.async_api import Page, async_playwright
 from app.services.ollama_client import OllamaClient
 from app.services.stealth import apply_stealth
 from app.services.broadcaster import Broadcaster
+from app.services.field_highlighter import FieldHighlighter
+from app.services.highlighter_registry import HighlighterRegistry, HighlighterSession
 from app.prompts.form_analysis import FORM_ANALYSIS_PROMPT
 
 # Attributes to keep when cleaning HTML
@@ -166,6 +169,160 @@ class FormAnalyzer:
                 }
             finally:
                 await browser.close()
+
+    async def analyze_url_interactive(
+        self,
+        url: str,
+        analysis_id: str,
+        vnc_manager=None,
+        stealth: bool = True,
+    ) -> dict:
+        """Analyze URL interactively: keep browser open for VNC editing.
+
+        Similar to analyze_url() but:
+        1. Launches headed browser on Xvfb display (via vnc_manager)
+        2. Streams AI thinking tokens
+        3. Does NOT close the browser — creates FieldHighlighter + registers session
+        4. Activates VNC and broadcasts HighlightingReady
+        """
+        from app.services.vnc_manager import VNCManager
+
+        vnc_mgr = vnc_manager or VNCManager()
+        vnc_session_id = None
+        browser = None
+        pw = None
+
+        try:
+            # Reserve display for headed browser
+            reserved = await vnc_mgr.reserve_display(analysis_id)
+            vnc_session_id = reserved["session_id"]
+            vnc_display = reserved["display"]
+
+            # Launch headed browser on Xvfb
+            pw = await async_playwright().__aenter__()
+            launch_env = {**os.environ, "DISPLAY": vnc_display}
+            browser = await pw.chromium.launch(
+                headless=False,
+                args=["--no-sandbox", "--disable-setuid-sandbox"],
+                env=launch_env,
+            )
+            context = await browser.new_context()
+            if stealth:
+                await apply_stealth(context)
+            page = await context.new_page()
+
+            # Navigate and analyze
+            await page.goto(url, wait_until="networkidle", timeout=30000)
+            await page.wait_for_timeout(2000)
+
+            html_content = await page.content()
+            html_content = self._clean_html(html_content)
+            if len(html_content) > 50000:
+                html_content = html_content[:50000]
+
+            prompt = FORM_ANALYSIS_PROMPT.replace("{html_content}", html_content)
+
+            # Stream AI thinking
+            token_buffer = ""
+            last_flush = time.time()
+
+            def on_token(token: str):
+                nonlocal token_buffer, last_flush
+                token_buffer += token
+                now = time.time()
+                if now - last_flush >= 0.1:
+                    self.broadcaster.trigger_analysis(analysis_id, "AiThinking", {
+                        "token": token_buffer,
+                        "done": False,
+                    })
+                    token_buffer = ""
+                    last_flush = now
+
+            result = await self.ollama.parse_json_response_stream(
+                prompt, on_token=on_token
+            )
+
+            if token_buffer:
+                self.broadcaster.trigger_analysis(analysis_id, "AiThinking", {
+                    "token": token_buffer,
+                    "done": False,
+                })
+
+            self.broadcaster.trigger_analysis(analysis_id, "AiThinking", {
+                "token": "",
+                "done": True,
+            })
+
+            # Heuristic override
+            has_password = await self._detect_login_heuristic(page)
+            if not has_password:
+                result["page_requires_login"] = False
+
+            # Build fields list from analysis result
+            fields = []
+            for form in result.get("forms", []):
+                for field in form.get("fields", []):
+                    fields.append(field)
+
+            # Create FieldHighlighter and inject
+            highlighter = FieldHighlighter(page, analysis_id)
+            await highlighter.setup(fields)
+            await highlighter.inject()
+
+            # Activate VNC
+            vnc_result = await vnc_mgr.activate_vnc(vnc_session_id)
+
+            # Register session in HighlighterRegistry
+            session = HighlighterSession(
+                analysis_id=analysis_id,
+                highlighter=highlighter,
+                browser=browser,
+                context=context,
+                page=page,
+                pw=pw,
+                vnc_session_id=vnc_session_id,
+                fields=fields,
+            )
+            registry = HighlighterRegistry.get_instance()
+            await registry.register(session)
+
+            # Broadcast HighlightingReady
+            self.broadcaster.trigger_analysis(analysis_id, "HighlightingReady", {
+                "vnc_url": vnc_result.get("vnc_url"),
+                "vnc_session_id": vnc_session_id,
+                "fields": fields,
+                "analysis_result": result,
+            })
+
+            return result
+
+        except Exception as e:
+            # On error, clean up browser
+            if browser:
+                try:
+                    await browser.close()
+                except Exception:
+                    pass
+            if pw:
+                try:
+                    await pw.__aexit__(None, None, None)
+                except Exception:
+                    pass
+            if vnc_session_id and vnc_mgr:
+                try:
+                    await vnc_mgr.stop_session(vnc_session_id)
+                except Exception:
+                    pass
+
+            self.broadcaster.trigger_analysis(analysis_id, "AiThinking", {
+                "token": f"\nError: {str(e)}",
+                "done": True,
+            })
+            return {
+                "forms": [],
+                "page_requires_login": False,
+                "error": str(e),
+            }
 
     async def analyze_dynamic(self, url: str, previous_state: dict, interaction: str) -> dict:
         """Re-analyze page after an interaction for dynamic fields."""

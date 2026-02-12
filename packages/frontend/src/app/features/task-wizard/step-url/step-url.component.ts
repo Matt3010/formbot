@@ -237,9 +237,11 @@ export interface LoginConfig {
               }
 
               @if (analysisResult()) {
-                <button mat-stroked-button color="accent" class="mt-2" (click)="addPage()" [disabled]="analyzing()">
-                  <mat-icon>add</mat-icon> Add Another Page
-                </button>
+                <div class="mt-2 flex gap-2">
+                  <button mat-stroked-button color="accent" (click)="addPage()" [disabled]="analyzing()">
+                    <mat-icon>add</mat-icon> Add Another Page
+                  </button>
+                </div>
               }
             </div>
           </mat-tab>
@@ -325,9 +327,11 @@ export interface LoginConfig {
         }
 
         @if (analysisResult()) {
-          <button mat-stroked-button color="accent" class="mt-2" (click)="addPage()" [disabled]="analyzing()">
-            <mat-icon>add</mat-icon> Add Another Page
-          </button>
+          <div class="mt-2 flex gap-2">
+            <button mat-stroked-button color="accent" (click)="addPage()" [disabled]="analyzing()">
+              <mat-icon>add</mat-icon> Add Another Page
+            </button>
+          </div>
         }
       }
     </div>

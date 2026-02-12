@@ -30,6 +30,12 @@ class Analysis extends Model
         'error',
         'model',
         'task_id',
+        'vnc_session_id',
+        'editing_status',
+        'editing_step',
+        'user_corrections',
+        'editing_started_at',
+        'editing_expires_at',
         'started_at',
         'completed_at',
     ];
@@ -38,8 +44,11 @@ class Analysis extends Model
     {
         return [
             'result' => 'array',
+            'user_corrections' => 'array',
             'started_at' => 'datetime',
             'completed_at' => 'datetime',
+            'editing_started_at' => 'datetime',
+            'editing_expires_at' => 'datetime',
         ];
     }
 

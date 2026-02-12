@@ -2,6 +2,12 @@ import { Injectable, inject, signal, NgZone, effect } from '@angular/core';
 import { AuthService } from './auth.service';
 import { Subject, Observable } from 'rxjs';
 import Pusher from 'pusher-js';
+import {
+  HighlightingReadyEvent,
+  FieldSelectedEvent,
+  FieldAddedEvent,
+  FieldRemovedEvent,
+} from '../models/vnc-editor.model';
 
 export interface ExecutionProgress {
   execution_id: string;
@@ -59,6 +65,10 @@ export class WebSocketService {
   analysisCompleted$ = new Subject<any>();
   aiThinking$ = new Subject<AiThinkingEvent>();
   analysisVncRequired$ = new Subject<AnalysisVncEvent>();
+  highlightingReady$ = new Subject<HighlightingReadyEvent>();
+  vncFieldSelected$ = new Subject<FieldSelectedEvent>();
+  vncFieldAdded$ = new Subject<FieldAddedEvent>();
+  vncFieldRemoved$ = new Subject<FieldRemovedEvent>();
   connected = signal(false);
   connectionState = signal<string>('disconnected');
 
@@ -252,10 +262,30 @@ export class WebSocketService {
         this.analysisVncRequired$.next(data);
       }));
 
+      channel.bind('HighlightingReady', (data: HighlightingReadyEvent) => this.zone.run(() => {
+        this.highlightingReady$.next(data);
+      }));
+
+      channel.bind('FieldSelected', (data: FieldSelectedEvent) => this.zone.run(() => {
+        this.vncFieldSelected$.next(data);
+      }));
+
+      channel.bind('FieldAdded', (data: FieldAddedEvent) => this.zone.run(() => {
+        this.vncFieldAdded$.next(data);
+      }));
+
+      channel.bind('FieldRemoved', (data: FieldRemovedEvent) => this.zone.run(() => {
+        this.vncFieldRemoved$.next(data);
+      }));
+
       return () => {
         try {
           channel?.unbind('AiThinking');
           channel?.unbind('AnalysisVncRequired');
+          channel?.unbind('HighlightingReady');
+          channel?.unbind('FieldSelected');
+          channel?.unbind('FieldAdded');
+          channel?.unbind('FieldRemoved');
         } catch {}
       };
     });

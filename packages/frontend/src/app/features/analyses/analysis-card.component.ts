@@ -80,6 +80,14 @@ import { Analysis } from '../../core/models/analysis.model';
             <mat-icon>play_arrow</mat-icon> Resume Setup
           </button>
         }
+        @if (analysis().user_corrections && analysis().editing_status !== 'confirmed' && !analysis().task_id) {
+          <button mat-button color="accent" (click)="resumeEditing.emit()" matTooltip="Resume visual editing from saved draft">
+            <mat-icon>edit</mat-icon> Resume Editing
+          </button>
+        }
+        @if (analysis().status === 'editing') {
+          <mat-chip class="status-editing">EDITING</mat-chip>
+        }
         @if (analysis().status === 'pending' || analysis().status === 'analyzing') {
           <button mat-button color="warn" (click)="cancel.emit()" matTooltip="Cancel this analysis">
             <mat-icon>cancel</mat-icon> Cancel
@@ -117,12 +125,14 @@ import { Analysis } from '../../core/models/analysis.model';
     .status-failed { background-color: #f44336 !important; color: white !important; }
     .status-cancelled { background-color: #ff9800 !important; color: white !important; }
     .status-timed_out { background-color: #795548 !important; color: white !important; }
+    .status-editing { background-color: #673AB7 !important; color: white !important; }
   `]
 })
 export class AnalysisCardComponent {
   analysis = input.required<Analysis>();
 
   resume = output<void>();
+  resumeEditing = output<void>();
   cancel = output<void>();
   viewTask = output<void>();
 
