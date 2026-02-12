@@ -79,7 +79,7 @@ class TaskController extends Controller
 
         event(new TaskStatusChanged($task));
 
-        return response()->json(new TaskResource($task), 201);
+        return (new TaskResource($task))->response()->setStatusCode(201);
     }
 
     /**
@@ -161,6 +161,7 @@ class TaskController extends Controller
         $newTask->name = $task->name . ' (Copy)';
         $newTask->status = 'draft';
         $newTask->cloned_from = $task->id;
+        $newTask->login_session_data = null; // Never copy session data
         $newTask->save();
 
         foreach ($task->formDefinitions as $fd) {
@@ -185,7 +186,7 @@ class TaskController extends Controller
 
         event(new TaskStatusChanged($newTask));
 
-        return response()->json(new TaskResource($newTask), 201);
+        return (new TaskResource($newTask))->response()->setStatusCode(201);
     }
 
     /**
@@ -303,7 +304,7 @@ class TaskController extends Controller
 
         $task->load('formDefinitions.formFields');
 
-        return response()->json(new TaskResource($task), 201);
+        return (new TaskResource($task))->response()->setStatusCode(201);
     }
 
     /**

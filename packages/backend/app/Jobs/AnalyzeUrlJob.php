@@ -35,15 +35,20 @@ class AnalyzeUrlJob implements ShouldQueue
         try {
             $result = $scraperClient->analyze($this->url, $this->model, $this->analysisId);
 
-            event(new AnalysisCompleted(
+            // Check if scraper returned an error in the response body
+            $scraperError = $result['error'] ?? null;
+
+            broadcast(new AnalysisCompleted(
                 analysisId: $this->analysisId,
                 userId: $this->userId,
                 result: $result,
+                error: $scraperError,
             ));
 
             Log::info('AnalyzeUrlJob completed', [
                 'analysis_id' => $this->analysisId,
                 'forms_count' => count($result['forms'] ?? []),
+                'scraper_error' => $scraperError,
             ]);
         } catch (\Exception $e) {
             Log::error('AnalyzeUrlJob failed', [
@@ -51,7 +56,7 @@ class AnalyzeUrlJob implements ShouldQueue
                 'error' => $e->getMessage(),
             ]);
 
-            event(new AnalysisCompleted(
+            broadcast(new AnalysisCompleted(
                 analysisId: $this->analysisId,
                 userId: $this->userId,
                 result: [],

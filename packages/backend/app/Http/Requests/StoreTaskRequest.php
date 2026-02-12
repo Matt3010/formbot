@@ -32,6 +32,9 @@ class StoreTaskRequest extends FormRequest
             'stealth_enabled' => ['sometimes', 'boolean'],
             'custom_user_agent' => ['nullable', 'string'],
             'action_delay_ms' => ['sometimes', 'integer', 'min:0', 'max:30000'],
+            'requires_login' => ['sometimes', 'boolean'],
+            'login_url' => ['nullable', 'url', 'required_if:requires_login,true'],
+            'login_every_time' => ['sometimes', 'boolean'],
 
             // Nested form definitions
             'form_definitions' => ['sometimes', 'array'],

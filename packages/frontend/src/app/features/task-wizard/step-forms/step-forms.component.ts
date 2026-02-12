@@ -42,10 +42,15 @@ import { FormDefinition } from '../../../core/models/task.model';
       } @else {
         <div cdkDropList (cdkDropListDropped)="onDrop($event)">
           @for (form of editableForms(); track form.id || $index) {
-            <mat-card cdkDrag class="form-card mb-2">
+            <mat-card cdkDrag [cdkDragDisabled]="form.form_type === 'login' && form.step_order === 0" class="form-card mb-2">
               <div class="drag-handle" cdkDragHandle>
-                <mat-icon>drag_indicator</mat-icon>
-                Step {{ $index + 1 }}
+                @if (form.form_type === 'login' && form.step_order === 0) {
+                  <mat-icon>lock</mat-icon>
+                  Login Step (always first)
+                } @else {
+                  <mat-icon>drag_indicator</mat-icon>
+                  Step {{ $index + 1 }}
+                }
               </div>
 
               <mat-card-content>

@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { ApiService } from './api.service';
-import { Task } from '../models/task.model';
+import { Task, TaskPayload } from '../models/task.model';
 import { ExecutionLog } from '../models/execution-log.model';
 import { Observable } from 'rxjs';
 
@@ -16,11 +16,11 @@ export class TaskService {
     return this.api.get(`/tasks/${id}`);
   }
 
-  createTask(task: Partial<Task>): Observable<{ data: Task }> {
+  createTask(task: Partial<Task> | TaskPayload): Observable<{ data: Task }> {
     return this.api.post('/tasks', task);
   }
 
-  updateTask(id: string, task: Partial<Task>): Observable<{ data: Task }> {
+  updateTask(id: string, task: Partial<Task> | TaskPayload): Observable<{ data: Task }> {
     return this.api.put(`/tasks/${id}`, task);
   }
 
@@ -62,6 +62,21 @@ export class TaskService {
 
   analyzeNextPage(url: string): Observable<any> {
     return this.api.post('/analyze/next-page', { url });
+  }
+
+  analyzeLoginAndTarget(payload: {
+    login_url: string;
+    target_url: string;
+    login_form_selector: string;
+    login_submit_selector: string;
+    login_fields: { field_selector: string; value: string; field_type?: string; is_sensitive?: boolean }[];
+    needs_vnc?: boolean;
+  }): Observable<any> {
+    return this.api.post('/analyze/login-and-target', payload);
+  }
+
+  resumeAnalysisVnc(sessionId: string, analysisId: string): Observable<any> {
+    return this.api.post('/analyze/resume-vnc', { session_id: sessionId, analysis_id: analysisId });
   }
 
   validateSelectors(taskId: string): Observable<any> {

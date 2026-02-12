@@ -35,6 +35,14 @@ export interface AiThinkingEvent {
   done: boolean;
 }
 
+export interface AnalysisVncEvent {
+  analysis_id: string;
+  vnc_session_id: string;
+  vnc_url: string;
+  ws_port?: number;
+  reason: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class WebSocketService {
   private auth = inject(AuthService);
@@ -50,6 +58,7 @@ export class WebSocketService {
   captchaDetected$ = new Subject<any>();
   analysisCompleted$ = new Subject<any>();
   aiThinking$ = new Subject<AiThinkingEvent>();
+  analysisVncRequired$ = new Subject<AnalysisVncEvent>();
   connected = signal(false);
   connectionState = signal<string>('disconnected');
 
@@ -239,9 +248,14 @@ export class WebSocketService {
         }
       }));
 
+      channel.bind('AnalysisVncRequired', (data: AnalysisVncEvent) => this.zone.run(() => {
+        this.analysisVncRequired$.next(data);
+      }));
+
       return () => {
         try {
           channel?.unbind('AiThinking');
+          channel?.unbind('AnalysisVncRequired');
         } catch {}
       };
     });

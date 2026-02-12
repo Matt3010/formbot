@@ -42,7 +42,11 @@ import { NotificationService } from '../../../core/services/notification.service
           <mat-expansion-panel [expanded]="$index === 0" class="mb-2">
             <mat-expansion-panel-header>
               <mat-panel-title>
-                Step {{ $index + 1 }}: {{ form.form_type | titlecase }} Form
+                @if (form.form_type === 'login' && form.step_order === 0) {
+                  <mat-icon class="panel-icon">login</mat-icon> Login Credentials
+                } @else {
+                  Step {{ $index + 1 }}: {{ form.form_type | titlecase }} Form
+                }
               </mat-panel-title>
               <mat-panel-description>
                 {{ form.fields?.length || 0 }} fields
@@ -134,6 +138,7 @@ import { NotificationService } from '../../../core/services/notification.service
     .field-purpose { color: #666; font-size: 13px; margin-left: 4px; }
     .required-chip { font-size: 11px; margin-left: 8px; }
     .fields-container { padding: 8px 0; }
+    .panel-icon { vertical-align: middle; margin-right: 4px; font-size: 20px; }
   `]
 })
 export class StepFillComponent {
@@ -150,7 +155,12 @@ export class StepFillComponent {
     if (incoming.length > 0) {
       this.editableForms.set(incoming.map(f => ({
         ...f,
-        fields: f.fields?.map(field => ({ ...field })) || []
+        fields: f.fields?.map(field => ({
+          ...field,
+          // Auto-mark password fields in login forms as sensitive
+          is_sensitive: field.is_sensitive ||
+            (f.form_type === 'login' && (field.field_type === 'password' || field.field_purpose === 'password')),
+        })) || []
       })));
     }
   }

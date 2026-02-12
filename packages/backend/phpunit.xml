@@ -15,15 +15,15 @@
         </include>
     </source>
     <php>
-        <env name="APP_ENV" value="testing"/>
-        <env name="APP_KEY" value="base64:OSMe5xYf0W/jTZ6hU0JH5UEpy4OhdDjo9dzZSY9QMIc="/>
-        <env name="DB_CONNECTION" value="sqlite"/>
-        <env name="DB_DATABASE" value=":memory:"/>
-        <env name="QUEUE_CONNECTION" value="sync"/>
-        <env name="CACHE_DRIVER" value="array"/>
-        <env name="SESSION_DRIVER" value="array"/>
-        <env name="BROADCAST_DRIVER" value="log"/>
-        <env name="SCRAPER_SERVICE_URL" value="http://scraper-test:9000"/>
-        <env name="SCRAPER_TIMEOUT" value="5"/>
+        <env name="APP_ENV" value="testing" force="true"/>
+        <env name="APP_KEY" value="base64:OSMe5xYf0W/jTZ6hU0JH5UEpy4OhdDjo9dzZSY9QMIc=" force="true"/>
+        <env name="DB_CONNECTION" value="sqlite" force="true"/>
+        <env name="DB_DATABASE" value=":memory:" force="true"/>
+        <env name="QUEUE_CONNECTION" value="sync" force="true"/>
+        <env name="CACHE_DRIVER" value="array" force="true"/>
+        <env name="SESSION_DRIVER" value="array" force="true"/>
+        <env name="BROADCAST_DRIVER" value="log" force="true"/>
+        <env name="SCRAPER_SERVICE_URL" value="http://scraper-test:9000" force="true"/>
+        <env name="SCRAPER_TIMEOUT" value="5" force="true"/>
     </php>
 </phpunit>

@@ -23,6 +23,15 @@ class Task extends Model
     public $incrementing = false;
 
     /**
+     * The model's default values for attributes.
+     */
+    protected $attributes = [
+        'status' => 'draft',
+        'requires_login' => false,
+        'login_every_time' => true,
+    ];
+
+    /**
      * The attributes that are mass assignable.
      */
     protected $fillable = [
@@ -40,6 +49,10 @@ class Task extends Model
         'custom_user_agent',
         'action_delay_ms',
         'cloned_from',
+        'requires_login',
+        'login_url',
+        'login_every_time',
+        'login_session_data',
     ];
 
     /**
@@ -50,6 +63,8 @@ class Task extends Model
         return [
             'is_dry_run' => 'boolean',
             'stealth_enabled' => 'boolean',
+            'requires_login' => 'boolean',
+            'login_every_time' => 'boolean',
             'schedule_at' => 'datetime',
         ];
     }

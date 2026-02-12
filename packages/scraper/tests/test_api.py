@@ -50,7 +50,7 @@ async def test_analyze_endpoint_success():
     assert data["forms"][0]["form_type"] == "login"
     assert data["page_requires_login"] is True
 
-    mock_analyzer.analyze_url.assert_awaited_once_with("https://example.com/login")
+    mock_analyzer.analyze_url.assert_awaited_once_with("https://example.com/login", analysis_id=None)
 
 
 @pytest.mark.asyncio
@@ -386,7 +386,7 @@ async def test_health_check_ollama_available():
     mock_ollama = AsyncMock()
     mock_ollama.is_available = AsyncMock(return_value=True)
 
-    with patch("app.main.OllamaClient", return_value=mock_ollama):
+    with patch("app.services.ollama_client.OllamaClient", return_value=mock_ollama):
         app = _get_app()
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as ac:
@@ -404,7 +404,7 @@ async def test_health_check_ollama_unavailable():
     mock_ollama = AsyncMock()
     mock_ollama.is_available = AsyncMock(return_value=False)
 
-    with patch("app.main.OllamaClient", return_value=mock_ollama):
+    with patch("app.services.ollama_client.OllamaClient", return_value=mock_ollama):
         app = _get_app()
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as ac:
@@ -485,3 +485,102 @@ async def test_vnc_stop_endpoint():
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "stopped"
+
+
+# ---------------------------------------------------------------------------
+# POST /analyze/login-and-target
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_analyze_login_and_target_endpoint():
+    """POST /analyze/login-and-target returns started with analysis_id."""
+    with patch("app.api.analyze.asyncio.create_task") as mock_create_task:
+        app = _get_app()
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            response = await ac.post("/analyze/login-and-target", json={
+                "analysis_id": "test-analysis-001",
+                "login_url": "https://example.com/login",
+                "target_url": "https://example.com/dashboard",
+                "login_form_selector": "#login-form",
+                "login_submit_selector": "#submit-btn",
+                "login_fields": [
+                    {"field_selector": "#username", "value": "admin", "field_type": "text"},
+                    {"field_selector": "#password", "value": "secret", "field_type": "password", "is_sensitive": True},
+                ],
+                "needs_vnc": False,
+            })
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "started"
+    assert data["analysis_id"] == "test-analysis-001"
+
+    # Background task was created
+    mock_create_task.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_analyze_login_and_target_missing_required_fields():
+    """POST /analyze/login-and-target returns 422 when required fields are missing."""
+    app = _get_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        response = await ac.post("/analyze/login-and-target", json={
+            "analysis_id": "test-analysis-002",
+            # Missing login_url, target_url, etc.
+        })
+
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_analyze_login_and_target_with_vnc():
+    """POST /analyze/login-and-target accepts needs_vnc=True."""
+    with patch("app.api.analyze.asyncio.create_task"):
+        app = _get_app()
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            response = await ac.post("/analyze/login-and-target", json={
+                "analysis_id": "test-analysis-003",
+                "login_url": "https://example.com/login",
+                "target_url": "https://example.com/dashboard",
+                "login_form_selector": "#login-form",
+                "login_submit_selector": "#submit-btn",
+                "login_fields": [],
+                "needs_vnc": True,
+            })
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "started"
+
+
+# ---------------------------------------------------------------------------
+# POST /vnc/resume-analysis
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_vnc_resume_analysis_endpoint():
+    """POST /vnc/resume-analysis signals a VNC session to resume during analysis."""
+    mock_vnc = AsyncMock()
+    mock_vnc.resume_session = AsyncMock(return_value={
+        "status": "resumed",
+        "execution_id": "analysis-123",
+    })
+
+    with patch("app.api.vnc.vnc_manager", mock_vnc):
+        app = _get_app()
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            response = await ac.post("/vnc/resume-analysis", json={
+                "session_id": "vnc-session-abc",
+                "analysis_id": "analysis-123",
+            })
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "resumed"
+    mock_vnc.resume_session.assert_awaited_once_with("vnc-session-abc", "analysis-123")

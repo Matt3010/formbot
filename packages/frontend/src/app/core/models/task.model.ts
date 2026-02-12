@@ -14,6 +14,9 @@ export interface Task {
   custom_user_agent: string | null;
   action_delay_ms: number;
   cloned_from: string | null;
+  requires_login: boolean;
+  login_url: string | null;
+  login_every_time: boolean;
   form_definitions: FormDefinition[];
   created_at: string;
   updated_at: string;
@@ -33,6 +36,50 @@ export interface FormDefinition {
   fields: FormField[];
   created_at: string;
   updated_at: string;
+}
+
+export interface FormFieldPayload {
+  field_name: string;
+  field_type: string;
+  field_selector: string;
+  field_purpose: string | null;
+  preset_value: string | null;
+  is_sensitive: boolean;
+  is_file_upload: boolean;
+  is_required: boolean;
+  options: string[] | null;
+  sort_order: number;
+}
+
+export interface FormDefinitionPayload {
+  step_order: number;
+  page_url: string;
+  form_type: 'login' | 'intermediate' | 'target';
+  form_selector: string;
+  submit_selector: string;
+  ai_confidence: number | null;
+  captcha_detected: boolean;
+  two_factor_expected: boolean;
+  form_fields: FormFieldPayload[];
+}
+
+export interface TaskPayload {
+  name: string;
+  target_url: string;
+  status: Task['status'];
+  schedule_type: 'once' | 'cron';
+  schedule_cron: string | null;
+  schedule_at: string | null;
+  is_dry_run: boolean;
+  stealth_enabled: boolean;
+  action_delay_ms: number;
+  custom_user_agent: string | null;
+  max_retries: number;
+  max_parallel: number;
+  requires_login: boolean;
+  login_url: string | null;
+  login_every_time: boolean;
+  form_definitions: FormDefinitionPayload[];
 }
 
 export interface FormField {

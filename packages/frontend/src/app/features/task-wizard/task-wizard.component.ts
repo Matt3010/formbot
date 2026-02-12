@@ -9,8 +9,8 @@ import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { TaskService } from '../../core/services/task.service';
 import { NotificationService } from '../../core/services/notification.service';
-import { Task, FormDefinition } from '../../core/models/task.model';
-import { StepUrlComponent } from './step-url/step-url.component';
+import { Task, FormDefinition, TaskPayload } from '../../core/models/task.model';
+import { StepUrlComponent, LoginConfig } from './step-url/step-url.component';
 import { StepFormsComponent } from './step-forms/step-forms.component';
 import { StepFillComponent } from './step-fill/step-fill.component';
 import { StepScheduleComponent, ScheduleData } from './step-schedule/step-schedule.component';
@@ -50,6 +50,7 @@ import { StepOptionsComponent, TaskOptions } from './step-options/step-options.c
           <ng-template matStepLabel>URL & Analyze</ng-template>
           <app-step-url
             (formsDetected)="onFormsDetected($event)"
+            (loginConfigChanged)="onLoginConfigChanged($event)"
           />
           <div class="step-actions mt-2">
             <button mat-raised-button color="primary" matStepperNext [disabled]="detectedForms().length === 0">
@@ -155,6 +156,11 @@ export class TaskWizardComponent implements OnInit {
   editingTaskId = signal<string | null>(null);
   saving = signal(false);
 
+  // Login config
+  requiresLogin = signal(false);
+  loginUrl = signal<string | null>(null);
+  loginEveryTime = signal(true);
+
   taskNameControl = this.fb.nonNullable.control('', Validators.required);
   detectedForms = signal<FormDefinition[]>([]);
   confirmedForms = signal<FormDefinition[]>([]);
@@ -202,9 +208,25 @@ export class TaskWizardComponent implements OnInit {
           max_parallel: task.max_parallel,
         });
 
+        // Populate login config
+        if (task.requires_login) {
+          this.requiresLogin.set(true);
+          this.loginUrl.set(task.login_url);
+          this.loginEveryTime.set(task.login_every_time);
+        }
+
         // Populate child components after view init
         setTimeout(() => {
-          if (this.stepUrl) this.stepUrl.setUrl(task.target_url);
+          if (this.stepUrl) {
+            this.stepUrl.setUrl(task.target_url);
+            if (task.requires_login) {
+              this.stepUrl.setLoginConfig({
+                requires_login: task.requires_login,
+                login_url: task.login_url,
+                login_every_time: task.login_every_time,
+              });
+            }
+          }
           if (this.stepForms) this.stepForms.setForms(task.form_definitions);
           if (this.stepFill) this.stepFill.setForms(task.form_definitions);
           if (this.stepSchedule) this.stepSchedule.setSchedule(this.scheduleData());
@@ -213,6 +235,12 @@ export class TaskWizardComponent implements OnInit {
       },
       error: () => this.notify.error('Failed to load task')
     });
+  }
+
+  onLoginConfigChanged(config: LoginConfig) {
+    this.requiresLogin.set(config.requires_login);
+    this.loginUrl.set(config.login_url);
+    this.loginEveryTime.set(config.login_every_time);
   }
 
   onFormsDetected(forms: FormDefinition[]) {
@@ -236,16 +264,45 @@ export class TaskWizardComponent implements OnInit {
     this.taskOptions.set(opts);
   }
 
-  private buildTaskPayload(status: string): Partial<Task> {
+  private buildTaskPayload(status: string): TaskPayload {
     const forms = this.filledForms().length > 0 ? this.filledForms() :
                   this.confirmedForms().length > 0 ? this.confirmedForms() :
                   this.detectedForms();
     const schedule = this.scheduleData();
     const options = this.taskOptions();
 
+    // For login-aware tasks, target_url should be the target page (not login page)
+    const targetUrl = this.requiresLogin()
+      ? forms.find(f => f.form_type !== 'login')?.page_url || forms[0]?.page_url || ''
+      : forms[0]?.page_url || '';
+
+    // Transform forms: rename 'fields' to 'form_fields' for backend
+    const formDefs = forms.map(f => ({
+      step_order: f.step_order,
+      page_url: f.page_url,
+      form_type: f.form_type,
+      form_selector: f.form_selector,
+      submit_selector: f.submit_selector,
+      ai_confidence: f.ai_confidence,
+      captcha_detected: f.captcha_detected ?? false,
+      two_factor_expected: f.two_factor_expected ?? false,
+      form_fields: (f.fields || []).map((field, idx) => ({
+        field_name: field.field_name,
+        field_type: field.field_type,
+        field_selector: field.field_selector,
+        field_purpose: field.field_purpose || null,
+        preset_value: field.preset_value || null,
+        is_sensitive: field.is_sensitive ?? false,
+        is_file_upload: field.is_file_upload ?? false,
+        is_required: field.is_required ?? false,
+        options: field.options || null,
+        sort_order: field.sort_order ?? idx,
+      })),
+    }));
+
     return {
       name: this.taskNameControl.value || 'Untitled Task',
-      target_url: forms[0]?.page_url || '',
+      target_url: targetUrl,
       status: status as Task['status'],
       schedule_type: schedule.schedule_type,
       schedule_cron: schedule.schedule_cron,
@@ -256,7 +313,10 @@ export class TaskWizardComponent implements OnInit {
       custom_user_agent: options.custom_user_agent,
       max_retries: options.max_retries,
       max_parallel: options.max_parallel,
-      form_definitions: forms,
+      requires_login: this.requiresLogin(),
+      login_url: this.loginUrl(),
+      login_every_time: this.loginEveryTime(),
+      form_definitions: formDefs,
     };
   }
 

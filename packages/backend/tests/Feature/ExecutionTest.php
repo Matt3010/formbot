@@ -60,11 +60,18 @@ class ExecutionTest extends TestCase
             'status' => 'success',
             'completed_at' => now()->subMinutes(2),
         ]);
+
+        // Ensure distinct created_at timestamps for ordering
+        $this->travel(1)->seconds();
+
         $exec2 = $this->createExecution([
             'status' => 'failed',
             'error_message' => 'Timeout',
             'completed_at' => now()->subMinute(),
         ]);
+
+        $this->travel(1)->seconds();
+
         $exec3 = $this->createExecution([
             'status' => 'running',
         ]);
@@ -85,7 +92,6 @@ class ExecutionTest extends TestCase
             ]);
 
         // Should be ordered by created_at desc -- most recent first
-        $statuses = collect($response->json('data'))->pluck('status')->all();
         $this->assertEquals($exec3->id, $response->json('data.0.id'));
     }
 

@@ -122,7 +122,20 @@ class VNCManager:
                 pass
 
     @staticmethod
+    def _kill_existing_xvfb(display: str):
+        """Kill any existing Xvfb process on this display."""
+        display_num = display.lstrip(":")
+        lock_file = f"/tmp/.X{display_num}-lock"
+        try:
+            with open(lock_file) as f:
+                pid = int(f.read().strip())
+            os.kill(pid, 9)  # SIGKILL
+        except (FileNotFoundError, ValueError, ProcessLookupError, PermissionError):
+            pass
+
+    @staticmethod
     def _start_xvfb(display: str) -> subprocess.Popen:
+        VNCManager._kill_existing_xvfb(display)
         VNCManager._clean_display_files(display)
         proc = subprocess.Popen(
             ["Xvfb", display, "-screen", "0", "1280x720x24"],

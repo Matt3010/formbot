@@ -206,9 +206,11 @@ class AuthTest extends TestCase
             'password' => bcrypt('password123'),
         ]);
 
-        Passport::actingAs($user);
+        // Create a real personal access token so revoke() works in logout
+        $tokenResult = $user->createToken('Test Token');
 
-        $response = $this->postJson('/api/logout');
+        $response = $this->withToken($tokenResult->accessToken)
+            ->postJson('/api/logout');
 
         $response->assertStatus(200)
             ->assertJsonPath('message', 'Successfully logged out.');

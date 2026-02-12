@@ -85,6 +85,72 @@ class ScraperClient
     }
 
     /**
+     * Analyze login and target pages via the Python scraper service.
+     */
+    public function analyzeLoginAndTarget(
+        string $analysisId,
+        string $loginUrl,
+        string $targetUrl,
+        string $loginFormSelector,
+        string $loginSubmitSelector,
+        array $loginFields,
+        bool $needsVnc = false,
+        ?string $model = null,
+    ): array {
+        $payload = [
+            'analysis_id' => $analysisId,
+            'login_url' => $loginUrl,
+            'target_url' => $targetUrl,
+            'login_form_selector' => $loginFormSelector,
+            'login_submit_selector' => $loginSubmitSelector,
+            'login_fields' => $loginFields,
+            'needs_vnc' => $needsVnc,
+        ];
+
+        if ($model) {
+            $payload['ollama_model'] = $model;
+        }
+
+        $response = Http::timeout($this->timeout)
+            ->post("{$this->baseUrl}/analyze/login-and-target", $payload);
+
+        if (!$response->successful()) {
+            Log::error('Scraper analyzeLoginAndTarget failed', [
+                'login_url' => $loginUrl,
+                'target_url' => $targetUrl,
+                'status' => $response->status(),
+                'body' => $response->body(),
+            ]);
+
+            throw new \RuntimeException(
+                'Failed to analyze login and target: ' . ($response->json('detail') ?? $response->body())
+            );
+        }
+
+        return $response->json();
+    }
+
+    /**
+     * Resume VNC session during analysis.
+     */
+    public function resumeAnalysisVnc(string $sessionId, string $analysisId): array
+    {
+        $response = Http::timeout($this->timeout)
+            ->post("{$this->baseUrl}/vnc/resume-analysis", [
+                'session_id' => $sessionId,
+                'analysis_id' => $analysisId,
+            ]);
+
+        if (!$response->successful()) {
+            throw new \RuntimeException(
+                'Failed to resume analysis VNC: ' . ($response->json('detail') ?? $response->body())
+            );
+        }
+
+        return $response->json();
+    }
+
+    /**
      * Validate CSS selectors on a page.
      */
     public function validateSelectors(string $url = '', array $selectors = [], ?string $taskId = null): array
