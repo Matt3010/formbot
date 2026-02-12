@@ -1,5 +1,6 @@
 """Tests for FastAPI endpoints (analyze, execute, validate, health)."""
 
+import copy
 import uuid
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -33,7 +34,7 @@ def _get_app():
 async def test_analyze_endpoint_success():
     """POST /analyze returns LLM form analysis for the given URL."""
     mock_analyzer = AsyncMock()
-    mock_analyzer.analyze_url = AsyncMock(return_value=SIMPLE_LOGIN_ANALYSIS)
+    mock_analyzer.analyze_url = AsyncMock(return_value=copy.deepcopy(SIMPLE_LOGIN_ANALYSIS))
 
     with patch("app.api.analyze.FormAnalyzer", return_value=mock_analyzer):
         app = _get_app()

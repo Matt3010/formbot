@@ -218,8 +218,12 @@ NO_FORMS_ANALYSIS = {
 # Mock Playwright helpers
 # ---------------------------------------------------------------------------
 
-def _make_mock_page(html_content: str = SIMPLE_LOGIN_HTML) -> AsyncMock:
-    """Return an AsyncMock that behaves like a Playwright Page."""
+def _make_mock_page(html_content: str = SIMPLE_LOGIN_HTML, has_password: bool = False) -> AsyncMock:
+    """Return an AsyncMock that behaves like a Playwright Page.
+
+    If *has_password* is True, ``page.locator(selector).count()`` returns 1 for
+    password-related selectors so that ``_detect_login_heuristic`` sees a login page.
+    """
     page = AsyncMock()
     page.goto = AsyncMock()
     page.wait_for_timeout = AsyncMock()
@@ -236,6 +240,12 @@ def _make_mock_page(html_content: str = SIMPLE_LOGIN_HTML) -> AsyncMock:
     page.wait_for_selector = AsyncMock()
     page.query_selector = AsyncMock(return_value=MagicMock())  # non-None element
     page.add_init_script = AsyncMock()
+
+    # Mock locator().count() for _detect_login_heuristic
+    locator_mock = AsyncMock()
+    locator_mock.count = AsyncMock(return_value=1 if has_password else 0)
+    page.locator = MagicMock(return_value=locator_mock)
+
     return page
 
 

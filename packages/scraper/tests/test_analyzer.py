@@ -1,5 +1,6 @@
 """Tests for app.services.form_analyzer.FormAnalyzer."""
 
+import copy
 import json
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -26,13 +27,15 @@ from tests.conftest import (
 # Helper to patch async_playwright + OllamaClient in one go
 # ---------------------------------------------------------------------------
 
-def _patch_analyzer(html: str, analysis_result: dict):
+def _patch_analyzer(html: str, analysis_result: dict, has_password: bool = False):
     """Return a pair of context-manager patches for async_playwright and OllamaClient.
 
     The Playwright mock will return ``html`` from ``page.content()``.
     The OllamaClient mock will return ``analysis_result`` from ``parse_json_response``.
+    If *has_password* is True the mock page will report a password field so that
+    the login heuristic does not override ``page_requires_login``.
     """
-    page = _make_mock_page(html)
+    page = _make_mock_page(html, has_password=has_password)
     context = _make_mock_context(page)
     browser = _make_mock_browser(context)
     pw_cm = _make_mock_playwright(browser)
@@ -43,7 +46,7 @@ def _patch_analyzer(html: str, analysis_result: dict):
     )
 
     ollama_mock = AsyncMock()
-    ollama_mock.parse_json_response = AsyncMock(return_value=analysis_result)
+    ollama_mock.parse_json_response = AsyncMock(return_value=copy.deepcopy(analysis_result))
 
     ollama_patch = patch(
         "app.services.form_analyzer.OllamaClient",
@@ -62,7 +65,7 @@ def _patch_analyzer(html: str, analysis_result: dict):
 async def test_analyze_simple_login_form():
     """analyze_url returns the expected login form analysis."""
     pw_patch, ollama_patch, page, browser, ollama_mock = _patch_analyzer(
-        SIMPLE_LOGIN_HTML, SIMPLE_LOGIN_ANALYSIS
+        SIMPLE_LOGIN_HTML, SIMPLE_LOGIN_ANALYSIS, has_password=True
     )
 
     with pw_patch, ollama_patch:
