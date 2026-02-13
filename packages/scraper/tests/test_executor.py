@@ -121,7 +121,7 @@ async def test_execute_simple_single_form(mock_db, mock_vnc_manager):
         id=form_def_id, task_id=task_id, step_order=1,
         page_url="https://example.com/login",
         form_selector="#login-form", submit_selector="#submit-btn",
-        captcha_detected=False, two_factor_expected=False,
+        human_breakpoint=False,
     )
     username_field = make_form_field(
         form_definition_id=form_def_id, field_name="username",
@@ -142,7 +142,7 @@ async def test_execute_simple_single_form(mock_db, mock_vnc_manager):
 
     page = _make_mock_page()
     browser = _make_mock_browser(_make_mock_context(page))
-    pw_patch, stealth_patch, _ = _build_executor_patches(page, browser)
+    pw_patch, stealth_patch, context = _build_executor_patches(page, browser)
 
     with pw_patch, stealth_patch:
         from app.services.task_executor import TaskExecutor
@@ -192,13 +192,13 @@ async def test_execute_multi_step(mock_db, mock_vnc_manager):
         id=fd1_id, task_id=task_id, step_order=1,
         page_url="https://example.com/login",
         form_selector="#login-form", submit_selector="#login-submit",
-        captcha_detected=False, two_factor_expected=False,
+        human_breakpoint=False,
     )
     form_def_2 = make_form_definition(
         id=fd2_id, task_id=task_id, step_order=2,
         page_url="https://example.com/dashboard/form",
         form_selector="#data-form", submit_selector="#data-submit",
-        captcha_detected=False, two_factor_expected=False,
+        human_breakpoint=False,
     )
     login_field = make_form_field(
         form_definition_id=fd1_id, field_name="user",
@@ -255,7 +255,7 @@ async def test_execute_dry_run(mock_db, mock_vnc_manager):
         id=fd_id, task_id=task_id, step_order=1,
         page_url="https://example.com/form",
         form_selector="#form", submit_selector="#submit",
-        captcha_detected=False, two_factor_expected=False,
+        human_breakpoint=False,
     )
     field = make_form_field(
         form_definition_id=fd_id, field_name="name",
@@ -295,7 +295,7 @@ async def test_execute_dry_run(mock_db, mock_vnc_manager):
 
 @pytest.mark.asyncio
 async def test_execute_captcha_triggers_vnc_pause(mock_db):
-    """When captcha_detected=True, a VNC pause is triggered before field filling."""
+    """When human_breakpoint=True, a VNC pause is triggered before submit."""
     task_id = uuid.uuid4()
     fd_id = uuid.uuid4()
 
@@ -304,7 +304,7 @@ async def test_execute_captcha_triggers_vnc_pause(mock_db):
         id=fd_id, task_id=task_id, step_order=1,
         page_url="https://example.com/captcha",
         form_selector="#captcha-form", submit_selector="#submit",
-        captcha_detected=True, two_factor_expected=False,
+        human_breakpoint=True,
     )
     field = make_form_field(
         form_definition_id=fd_id, field_name="name",
@@ -348,7 +348,7 @@ async def test_execute_captcha_triggers_vnc_pause(mock_db):
 
 @pytest.mark.asyncio
 async def test_execute_2fa_triggers_post_submit_vnc(mock_db):
-    """When two_factor_expected=True, VNC pause happens AFTER form submission."""
+    """When human_breakpoint=True, VNC pause is triggered during execution."""
     task_id = uuid.uuid4()
     fd_id = uuid.uuid4()
 
@@ -357,7 +357,7 @@ async def test_execute_2fa_triggers_post_submit_vnc(mock_db):
         id=fd_id, task_id=task_id, step_order=1,
         page_url="https://example.com/login",
         form_selector="#login-form", submit_selector="#submit",
-        captcha_detected=False, two_factor_expected=True,
+        human_breakpoint=True,
     )
     field = make_form_field(
         form_definition_id=fd_id, field_name="user",
@@ -406,7 +406,7 @@ async def test_execute_vnc_timeout_fails(mock_db):
         id=fd_id, task_id=task_id, step_order=1,
         page_url="https://example.com/captcha",
         form_selector="#form", submit_selector="#submit",
-        captcha_detected=True, two_factor_expected=False,
+        human_breakpoint=True,
     )
 
     _setup_db_for_task(mock_db, task, [form_def], {fd_id: []})
@@ -431,48 +431,9 @@ async def test_execute_vnc_timeout_fails(mock_db):
         result = await executor.execute(str(task_id))
 
     assert result["status"] == "failed"
-    assert "timed out" in result["error"]
+    assert "VNC timeout" in result["error"]
 
     # VNC session cleaned up via finally block
-    vnc_mock.stop_session.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_execute_vnc_aborted_by_user_fails(mock_db):
-    """When VNC session is stopped (abort), execution fails with abort reason."""
-    task_id = uuid.uuid4()
-    fd_id = uuid.uuid4()
-
-    task = make_task(id=task_id)
-    form_def = make_form_definition(
-        id=fd_id, task_id=task_id, step_order=1,
-        page_url="https://example.com/captcha",
-        form_selector="#form", submit_selector="#submit",
-        captcha_detected=True, two_factor_expected=False,
-    )
-
-    _setup_db_for_task(mock_db, task, [form_def], {fd_id: []})
-
-    page = _make_mock_page()
-    browser = _make_mock_browser(_make_mock_context(page))
-    pw_patch, stealth_patch, context = _build_executor_patches(page, browser)
-
-    vnc_mock = _make_two_phase_vnc_mock()
-    vnc_mock.wait_for_resume = AsyncMock(return_value="stopped")
-
-    broadcaster_patch = patch(
-        "app.services.task_executor.Broadcaster.get_instance",
-        return_value=MagicMock(),
-    )
-
-    with pw_patch, stealth_patch, broadcaster_patch:
-        from app.services.task_executor import TaskExecutor
-
-        executor = TaskExecutor(db=mock_db, vnc_manager=vnc_mock)
-        result = await executor.execute(str(task_id))
-
-    assert result["status"] == "failed"
-    assert "aborted by user" in result["error"].lower()
     vnc_mock.stop_session.assert_awaited_once()
 
 
@@ -500,7 +461,7 @@ async def test_execute_form_selector_not_found(mock_db, mock_vnc_manager):
         id=fd_id, task_id=task_id, step_order=1,
         page_url="https://example.com/form",
         form_selector="#nonexistent-form", submit_selector="#submit",
-        captcha_detected=False, two_factor_expected=False,
+        human_breakpoint=False,
     )
 
     _setup_db_for_task(mock_db, task, [form_def], {fd_id: []})
@@ -531,7 +492,7 @@ async def test_execute_stealth_mode(mock_db, mock_vnc_manager):
         id=fd_id, task_id=task_id, step_order=1,
         page_url="https://example.com/form",
         form_selector="#form", submit_selector="#submit",
-        captcha_detected=False, two_factor_expected=False,
+        human_breakpoint=False,
     )
 
     _setup_db_for_task(mock_db, task, [form_def], {fd_id: []})
@@ -572,7 +533,7 @@ async def test_execute_stealth_disabled(mock_db, mock_vnc_manager):
         id=fd_id, task_id=task_id, step_order=1,
         page_url="https://example.com/form",
         form_selector="#form", submit_selector="#submit",
-        captcha_detected=False, two_factor_expected=False,
+        human_breakpoint=False,
     )
 
     _setup_db_for_task(mock_db, task, [form_def], {fd_id: []})
@@ -612,7 +573,7 @@ async def test_execute_field_filling_select(mock_db, mock_vnc_manager):
     form_def = make_form_definition(
         id=fd_id, task_id=task_id, step_order=1,
         form_selector="#form", submit_selector="#submit",
-        captcha_detected=False, two_factor_expected=False,
+        human_breakpoint=False,
     )
     select_field = make_form_field(
         form_definition_id=fd_id, field_name="country",
@@ -646,7 +607,7 @@ async def test_execute_field_filling_checkbox(mock_db, mock_vnc_manager):
     form_def = make_form_definition(
         id=fd_id, task_id=task_id, step_order=1,
         form_selector="#form", submit_selector="#submit",
-        captcha_detected=False, two_factor_expected=False,
+        human_breakpoint=False,
     )
     checkbox_on = make_form_field(
         form_definition_id=fd_id, field_name="agree",
@@ -688,7 +649,7 @@ async def test_execute_field_filling_file_upload(mock_db, mock_vnc_manager):
     form_def = make_form_definition(
         id=fd_id, task_id=task_id, step_order=1,
         form_selector="#form", submit_selector="#submit",
-        captcha_detected=False, two_factor_expected=False,
+        human_breakpoint=False,
     )
     file_field = make_form_field(
         form_definition_id=fd_id, field_name="document",
@@ -725,7 +686,7 @@ async def test_execute_field_filling_hidden(mock_db, mock_vnc_manager):
     form_def = make_form_definition(
         id=fd_id, task_id=task_id, step_order=1,
         form_selector="#form", submit_selector="#submit",
-        captcha_detected=False, two_factor_expected=False,
+        human_breakpoint=False,
     )
     hidden_field = make_form_field(
         form_definition_id=fd_id, field_name="token",
@@ -762,7 +723,7 @@ async def test_execute_skips_field_with_no_preset(mock_db, mock_vnc_manager):
     form_def = make_form_definition(
         id=fd_id, task_id=task_id, step_order=1,
         form_selector="#form", submit_selector="#submit",
-        captcha_detected=False, two_factor_expected=False,
+        human_breakpoint=False,
     )
     no_value_field = make_form_field(
         form_definition_id=fd_id, field_name="optional",
@@ -799,7 +760,7 @@ async def test_execute_field_error_continues(mock_db, mock_vnc_manager):
     form_def = make_form_definition(
         id=fd_id, task_id=task_id, step_order=1,
         form_selector="#form", submit_selector="#submit",
-        captcha_detected=False, two_factor_expected=False,
+        human_breakpoint=False,
     )
     bad_field = make_form_field(
         form_definition_id=fd_id, field_name="broken",
@@ -844,13 +805,13 @@ async def test_execute_dry_run_multi_step(mock_db, mock_vnc_manager):
         id=fd1_id, task_id=task_id, step_order=1,
         page_url="https://example.com/login",
         form_selector="#login", submit_selector="#login-btn",
-        captcha_detected=False, two_factor_expected=False,
+        human_breakpoint=False,
     )
     form_def_2 = make_form_definition(
         id=fd2_id, task_id=task_id, step_order=2,
         page_url="https://example.com/form",
         form_selector="#form", submit_selector="#submit-btn",
-        captcha_detected=False, two_factor_expected=False,
+        human_breakpoint=False,
     )
 
     _setup_db_for_task(mock_db, task, [form_def_1, form_def_2], {
@@ -898,7 +859,7 @@ async def test_no_duplicate_step_in_steps_log_after_captcha(mock_db):
         id=fd_id, task_id=task_id, step_order=1,
         page_url="https://example.com/captcha",
         form_selector="#captcha-form", submit_selector="button[type='submit']",
-        captcha_detected=True, two_factor_expected=False,
+        human_breakpoint=True,
     )
     field = make_form_field(
         form_definition_id=fd_id, field_name="name",
@@ -960,7 +921,7 @@ async def test_vnc_cleanup_on_execution_exception(mock_db):
         id=fd_id, task_id=task_id, step_order=1,
         page_url="https://example.com/captcha",
         form_selector="#form", submit_selector="#submit",
-        captcha_detected=True, two_factor_expected=False,
+        human_breakpoint=True,
     )
 
     _setup_db_for_task(mock_db, task, [form_def], {fd_id: []})
@@ -1009,7 +970,7 @@ async def test_vnc_cleanup_on_timeout_failure(mock_db):
         id=fd_id, task_id=task_id, step_order=1,
         page_url="https://example.com/captcha",
         form_selector="#form", submit_selector="#submit",
-        captcha_detected=True, two_factor_expected=False,
+        human_breakpoint=True,
     )
 
     _setup_db_for_task(mock_db, task, [form_def], {fd_id: []})

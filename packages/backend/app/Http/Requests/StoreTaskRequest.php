@@ -43,9 +43,7 @@ class StoreTaskRequest extends FormRequest
             'form_definitions.*.form_type' => ['required_with:form_definitions', 'in:login,intermediate,target'],
             'form_definitions.*.form_selector' => ['nullable', 'string'],
             'form_definitions.*.submit_selector' => ['nullable', 'string'],
-            'form_definitions.*.ai_confidence' => ['nullable', 'numeric', 'min:0', 'max:1'],
-            'form_definitions.*.captcha_detected' => ['sometimes', 'boolean'],
-            'form_definitions.*.two_factor_expected' => ['sometimes', 'boolean'],
+            'form_definitions.*.human_breakpoint' => ['sometimes', 'boolean'],
 
             // Nested form fields
             'form_definitions.*.form_fields' => ['sometimes', 'array'],

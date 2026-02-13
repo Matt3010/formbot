@@ -49,9 +49,6 @@ class ImportExportTest extends TestCase
             'form_type' => 'login',
             'form_selector' => '#login-form',
             'submit_selector' => '#submit-btn',
-            'ai_confidence' => 0.90,
-            'captcha_detected' => false,
-            'two_factor_expected' => false,
         ]);
 
         FormField::create([
@@ -85,9 +82,7 @@ class ImportExportTest extends TestCase
             'form_type' => 'target',
             'form_selector' => '#target-form',
             'submit_selector' => '#target-submit',
-            'ai_confidence' => 0.85,
-            'captcha_detected' => true,
-            'two_factor_expected' => false,
+            'human_breakpoint' => true,
         ]);
 
         FormField::create([
@@ -106,16 +101,14 @@ class ImportExportTest extends TestCase
     }
 
     // -----------------------------------------------------------------
-    // Export task via ImportExportController
+    // Export task
     // -----------------------------------------------------------------
 
     public function test_export_task_returns_json_without_sensitive_data(): void
     {
         $task = $this->createTaskWithForms();
 
-        // The route in api.php is POST /tasks/{task}/export which goes to TaskController@export.
-        // There is also an ImportExportController but the routes file maps to TaskController.
-        // We test the route as defined in routes/api.php.
+        // The route in api.php is POST /tasks/{task}/export via TaskController@export.
         $response = $this->postJson("/api/tasks/{$task->id}/export");
 
         $response->assertStatus(200);
@@ -157,7 +150,7 @@ class ImportExportTest extends TestCase
         // Second form definition (target)
         $targetFd = collect($data['form_definitions'])->firstWhere('form_type', 'target');
         $this->assertNotNull($targetFd);
-        $this->assertTrue($targetFd['captcha_detected']);
+        $this->assertTrue($targetFd['human_breakpoint']);
         $this->assertCount(1, $targetFd['form_fields']);
     }
 
@@ -200,8 +193,6 @@ class ImportExportTest extends TestCase
                     'form_type' => 'login',
                     'form_selector' => '#form',
                     'submit_selector' => '#submit',
-                    'ai_confidence' => 0.88,
-                    'captcha_detected' => false,
                     'form_fields' => [
                         [
                             'field_name' => 'username',

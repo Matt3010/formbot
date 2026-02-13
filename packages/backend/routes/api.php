@@ -35,7 +35,6 @@ Route::middleware('auth:api')->group(function () {
 
     // Analyzer
     Route::post('/analyze', [AnalyzerController::class, 'analyze']);
-    Route::post('/validate-selectors', [AnalyzerController::class, 'validateSelectors']);
 
     // Executions
     Route::get('/tasks/{task}/executions', [ExecutionController::class, 'index']);

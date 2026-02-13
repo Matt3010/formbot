@@ -1,11 +1,14 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatToolbarModule } from '@angular/material/toolbar';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { HttpClient } from '@angular/common/http';
+import { Subscription } from 'rxjs';
 
 export interface ScreenshotViewerData {
-  screenshotPath: string;
+  executionId: string;
 }
 
 @Component({
@@ -16,6 +19,7 @@ export interface ScreenshotViewerData {
     MatButtonModule,
     MatIconModule,
     MatToolbarModule,
+    MatProgressSpinnerModule,
   ],
   template: `
     <div class="screenshot-viewer">
@@ -37,12 +41,23 @@ export interface ScreenshotViewerData {
       </mat-toolbar>
 
       <div class="image-container">
-        <img
-          [src]="'/api/screenshots/' + data.screenshotPath"
-          [style.transform]="'scale(' + zoom() + ')'"
-          alt="Execution Screenshot"
-          class="screenshot-image"
-        />
+        @if (loading()) {
+          <div class="loader-wrap">
+            <mat-spinner diameter="36"></mat-spinner>
+          </div>
+        } @else if (imageUrl()) {
+          <img
+            [src]="imageUrl()!"
+            [style.transform]="'scale(' + zoom() + ')'"
+            alt="Execution Screenshot"
+            class="screenshot-image"
+          />
+        } @else {
+          <div class="error-wrap">
+            <mat-icon>broken_image</mat-icon>
+            <span>Screenshot not available.</span>
+          </div>
+        }
       </div>
     </div>
   `,
@@ -64,13 +79,47 @@ export interface ScreenshotViewerData {
       transition: transform 0.2s ease;
       transform-origin: top center;
     }
+    .loader-wrap, .error-wrap {
+      min-height: 220px;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #bbb;
+      gap: 10px;
+    }
   `]
 })
-export class ScreenshotViewerComponent {
+export class ScreenshotViewerComponent implements OnInit, OnDestroy {
   data = inject<ScreenshotViewerData>(MAT_DIALOG_DATA);
   private dialogRef = inject(MatDialogRef<ScreenshotViewerComponent>);
+  private http = inject(HttpClient);
+  private sub?: Subscription;
 
   zoom = signal(1);
+  imageUrl = signal<string | null>(null);
+  loading = signal(true);
+
+  ngOnInit() {
+    this.sub = this.http.get(`/api/executions/${this.data.executionId}/screenshot`, { responseType: 'blob' })
+      .subscribe({
+        next: (blob) => {
+          this.imageUrl.set(URL.createObjectURL(blob));
+          this.loading.set(false);
+        },
+        error: () => {
+          this.imageUrl.set(null);
+          this.loading.set(false);
+        },
+      });
+  }
+
+  ngOnDestroy() {
+    this.sub?.unsubscribe();
+    const url = this.imageUrl();
+    if (url) URL.revokeObjectURL(url);
+  }
 
   zoomIn() {
     this.zoom.update(z => Math.min(z + 0.25, 3));

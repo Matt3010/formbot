@@ -20,9 +20,9 @@ class FormDefinitionResource extends JsonResource
             'form_type' => $this->form_type,
             'form_selector' => $this->form_selector,
             'submit_selector' => $this->submit_selector,
-            'ai_confidence' => $this->ai_confidence,
-            'captcha_detected' => $this->captcha_detected,
-            'two_factor_expected' => $this->two_factor_expected,
+            'human_breakpoint' => $this->human_breakpoint,
+            // Keep both keys for backward compatibility with frontend payloads.
+            'fields' => FormFieldResource::collection($this->whenLoaded('formFields')),
             'form_fields' => FormFieldResource::collection($this->whenLoaded('formFields')),
             'created_at' => $this->created_at?->toISOString(),
             'updated_at' => $this->updated_at?->toISOString(),

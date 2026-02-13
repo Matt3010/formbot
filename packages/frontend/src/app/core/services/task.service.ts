@@ -52,10 +52,6 @@ export class TaskService {
     return this.api.post(`/tasks/${id}/export`);
   }
 
-  importTask(data: any): Observable<{ data: Task }> {
-    return this.api.post('/tasks/import', data);
-  }
-
   analyzeUrl(url: string): Observable<any> {
     return this.api.post('/analyze', { url });
   }
@@ -68,21 +64,11 @@ export class TaskService {
     return this.api.post(`/analyses/${analysisId}/editing/start`, { url });
   }
 
-  validateSelectors(taskId: string): Observable<any> {
-    return this.api.post('/validate-selectors', { task_id: taskId });
-  }
-
   getExecutions(taskId: string, params?: Record<string, string>): Observable<{ data: ExecutionLog[] }> {
     return this.api.get(`/tasks/${taskId}/executions`, params);
   }
 
   getExecution(id: string): Observable<{ data: ExecutionLog }> {
     return this.api.get(`/executions/${id}`);
-  }
-
-  uploadFile(file: File): Observable<{ path: string }> {
-    const formData = new FormData();
-    formData.append('file', file);
-    return this.api.upload('/files/upload', formData);
   }
 }

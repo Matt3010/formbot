@@ -58,9 +58,6 @@ class TaskTest extends TestCase
             'form_type' => 'login',
             'form_selector' => '#login-form',
             'submit_selector' => '#submit-btn',
-            'ai_confidence' => 0.95,
-            'captcha_detected' => false,
-            'two_factor_expected' => false,
         ]);
 
         FormField::create([
@@ -241,8 +238,6 @@ class TaskTest extends TestCase
                     'form_type' => 'login',
                     'form_selector' => '#login-form',
                     'submit_selector' => '#submit',
-                    'ai_confidence' => 0.92,
-                    'captcha_detected' => false,
                     'form_fields' => [
                         [
                             'field_name' => 'email',

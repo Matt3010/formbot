@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api import analyze, editing, execute, validate, vnc
+from app.api import analyze, editing, execute, vnc
 
 app = FastAPI(
     title="FormBot Scraper Service",
@@ -20,7 +20,6 @@ app.add_middleware(
 # Include routers
 app.include_router(analyze.router, tags=["analyze"])
 app.include_router(execute.router, tags=["execute"])
-app.include_router(validate.router, tags=["validate"])
 app.include_router(vnc.router, tags=["vnc"])
 app.include_router(editing.router, tags=["editing"])
 

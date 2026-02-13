@@ -2,9 +2,7 @@ import { Component, input } from '@angular/core';
 import { TitleCasePipe } from '@angular/common';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
-import { MatChipsModule } from '@angular/material/chips';
 import { MatTableModule } from '@angular/material/table';
-import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatExpansionModule } from '@angular/material/expansion';
 import { FormDefinition } from '../../core/models/task.model';
 
@@ -15,9 +13,7 @@ import { FormDefinition } from '../../core/models/task.model';
     TitleCasePipe,
     MatCardModule,
     MatIconModule,
-    MatChipsModule,
     MatTableModule,
-    MatProgressBarModule,
     MatExpansionModule,
   ],
   template: `
@@ -32,28 +28,6 @@ import { FormDefinition } from '../../core/models/task.model';
       </mat-card-header>
 
       <mat-card-content>
-        <div class="meta-row flex gap-2 items-center mb-2">
-          @if (form().ai_confidence != null) {
-            <div class="confidence-bar">
-              <span class="confidence-label">
-                AI Confidence: {{ (form().ai_confidence! * 100).toFixed(0) }}%
-              </span>
-              <mat-progress-bar
-                mode="determinate"
-                [value]="form().ai_confidence! * 100"
-                [color]="form().ai_confidence! > 0.7 ? 'primary' : 'warn'"
-              ></mat-progress-bar>
-            </div>
-          }
-
-          @if (form().captcha_detected) {
-            <mat-chip color="warn">
-              <mat-icon class="chip-icon">warning</mat-icon>
-              CAPTCHA
-            </mat-chip>
-          }
-        </div>
-
         <mat-expansion-panel>
           <mat-expansion-panel-header>
             <mat-panel-title>Selectors</mat-panel-title>
@@ -125,9 +99,6 @@ import { FormDefinition } from '../../core/models/task.model';
       font-size: 12px;
       margin-left: 8px;
     }
-    .confidence-bar { width: 200px; }
-    .confidence-label { font-size: 12px; color: #666; }
-    .chip-icon { font-size: 16px; width: 16px; height: 16px; margin-right: 4px; }
     .selector-info { font-size: 13px; line-height: 2; }
     code { background: #f5f5f5; padding: 2px 6px; border-radius: 3px; font-size: 12px; }
     .field-table { margin-top: 8px; }

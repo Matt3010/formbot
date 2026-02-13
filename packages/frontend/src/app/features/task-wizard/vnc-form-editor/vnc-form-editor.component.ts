@@ -8,7 +8,6 @@ import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { Subscription, Subject, debounceTime } from 'rxjs';
 import { WebSocketService } from '../../../core/services/websocket.service';
 import { VncEditorService } from '../../../core/services/vnc-editor.service';
-import { NotificationService } from '../../../core/services/notification.service';
 import { FormDefinition } from '../../../core/models/task.model';
 import {
   EditorMode, EditorPhase, EditorField, EditingStep, UserCorrections,
@@ -41,12 +40,25 @@ import { VncStepTabsComponent } from './vnc-step-tabs.component';
         <p>Setting up VNC session and highlighting fields...</p>
       </div>
     } @else if (vncUrl()) {
-      <div class="split-view">
+      <div class="viewer-toolbar">
+        <button mat-stroked-button (click)="toggleEditorHidden()">
+          <mat-icon>{{ editorHidden() ? 'view_sidebar' : 'desktop_windows' }}</mat-icon>
+          {{ editorHidden() ? 'Show Editor' : 'Focus VNC' }}
+        </button>
+        <button mat-stroked-button (click)="resetSplit()">
+          <mat-icon>space_dashboard</mat-icon>
+          Reset Layout
+        </button>
+      </div>
+
+      <div class="split-view" [class.editor-hidden]="editorHidden()">
         <!-- Mode toolbar (vertical, left edge) -->
-        <app-vnc-mode-toolbar
-          [mode]="currentMode()"
-          (modeChanged)="onModeChanged($event)"
-        />
+        @if (!editorHidden()) {
+          <app-vnc-mode-toolbar
+            [mode]="currentMode()"
+            (modeChanged)="onModeChanged($event)"
+          />
+        }
 
         <!-- VNC Panel -->
         <div class="vnc-panel" [style.flex-grow]="splitPosition()">
@@ -59,9 +71,12 @@ import { VncStepTabsComponent } from './vnc-step-tabs.component';
         </div>
 
         <!-- Divider (draggable) -->
-        <div class="divider" (mousedown)="startDrag($event)"></div>
+        @if (!editorHidden()) {
+          <div class="divider" (mousedown)="startDrag($event)"></div>
+        }
 
         <!-- Editor Panel -->
+        @if (!editorHidden()) {
         <div class="editor-panel" [style.flex-grow]="100 - splitPosition()">
           <!-- Step tabs for multi-step -->
           <app-vnc-step-tabs
@@ -72,20 +87,6 @@ import { VncStepTabsComponent } from './vnc-step-tabs.component';
 
           <!-- Step flags -->
           <div class="step-flags">
-            <mat-slide-toggle
-              [checked]="currentStepCaptcha()"
-              (change)="onCaptchaToggle($event.checked)"
-              color="accent">
-              <mat-icon class="bp-icon">smart_toy</mat-icon>
-              CAPTCHA expected
-            </mat-slide-toggle>
-            <mat-slide-toggle
-              [checked]="currentStep2fa()"
-              (change)="on2faToggle($event.checked)"
-              color="accent">
-              <mat-icon class="bp-icon">phonelink_lock</mat-icon>
-              2FA expected
-            </mat-slide-toggle>
             <mat-slide-toggle
               [checked]="currentStepBreakpoint()"
               (change)="onBreakpointToggle($event.checked)"
@@ -138,9 +139,6 @@ import { VncStepTabsComponent } from './vnc-step-tabs.component';
                   <mat-icon>play_arrow</mat-icon> Resume
                 </button>
               }
-              <button mat-stroked-button color="warn" (click)="onCancel()">
-                <mat-icon>close</mat-icon> Cancel
-              </button>
             } @else {
               <button mat-raised-button color="primary" (click)="onConfirmAll()" [disabled]="confirming()">
                 @if (confirming()) {
@@ -155,6 +153,7 @@ import { VncStepTabsComponent } from './vnc-step-tabs.component';
             }
           </div>
         </div>
+        }
       </div>
     } @else {
       <div class="error-state">
@@ -175,16 +174,23 @@ import { VncStepTabsComponent } from './vnc-step-tabs.component';
     }
     .split-view {
       display: flex;
-      height: calc(100vh - 200px);
-      min-height: 500px;
+      height: calc(100vh - 170px);
+      min-height: 640px;
       border: 1px solid #e0e0e0;
       border-radius: 8px;
       overflow: hidden;
+    }
+    .viewer-toolbar {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
     }
     .vnc-panel {
       position: relative;
       overflow: hidden;
       min-width: 0;
+      background: #111;
     }
     .vnc-iframe {
       width: 100%;
@@ -219,6 +225,7 @@ import { VncStepTabsComponent } from './vnc-step-tabs.component';
     .actions {
       display: flex;
       gap: 8px;
+      flex-wrap: wrap;
       padding: 12px;
       background: white;
       border-top: 1px solid #e0e0e0;
@@ -252,6 +259,36 @@ import { VncStepTabsComponent } from './vnc-step-tabs.component';
       vertical-align: middle;
       margin-right: 4px;
     }
+    .split-view.editor-hidden .vnc-panel {
+      flex-grow: 1 !important;
+    }
+    @media (max-width: 1279px) {
+      .split-view {
+        flex-direction: column;
+        height: calc(100vh - 170px);
+        min-height: 620px;
+      }
+      .vnc-panel {
+        flex: 1 1 58%;
+        min-height: 360px;
+      }
+      .divider {
+        width: 100%;
+        height: 6px;
+        cursor: row-resize;
+      }
+      .editor-panel {
+        flex: 1 1 42% !important;
+      }
+    }
+    @media (max-width: 767px) {
+      .split-view {
+        min-height: 560px;
+      }
+      .vnc-panel {
+        min-height: 320px;
+      }
+    }
   `]
 })
 export class VncFormEditorComponent implements OnInit, OnDestroy {
@@ -268,7 +305,6 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
   private sanitizer = inject(DomSanitizer);
   private ws = inject(WebSocketService);
   private editorService = inject(VncEditorService);
-  private notify = inject(NotificationService);
   private subs: Subscription[] = [];
   private draftSave$ = new Subject<void>();
   private fillField$ = new Subject<{ fieldIndex: number; value: string }>();
@@ -277,6 +313,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
   loading = signal(true);
   vncUrl = signal<string | null>(null);
   splitPosition = signal(65);
+  editorHidden = signal(false);
   currentMode = signal<EditorMode>('view');
   steps = signal<EditingStep[]>([]);
   activeStepIndex = signal(0);
@@ -293,8 +330,6 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
   currentFields = signal<EditorField[]>([]);
   selectedField = signal<EditorField | null>(null);
   currentStepBreakpoint = signal(false);
-  currentStepCaptcha = signal(false);
-  currentStep2fa = signal(false);
 
   private isDragging = false;
   private boundMouseMove = this.onDrag.bind(this);
@@ -378,6 +413,10 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
       }
     });
 
+    this.subs.push(
+      channel // keep reference for cleanup
+    );
+
     // Debounced draft auto-save
     this.subs.push(
       this.draftSave$.pipe(debounceTime(2000)).subscribe(() => {
@@ -408,46 +447,27 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
   }
 
   safeVncUrl = computed(() => {
-    const url = this.vncUrl() || '';
+    const url = this.withVncDefaults(this.vncUrl() || '');
     return this.sanitizer.bypassSecurityTrustResourceUrl(url);
   });
 
   // --- Initialization ---
 
   private initializeFromResult(result: any, fields: any[]) {
-    const editorFields: EditorField[] = fields.map((f: any, i: number) => ({
-      temp_id: crypto.randomUUID(),
-      field_name: f.field_name || f.name || '',
-      field_type: f.field_type || f.type || 'text',
-      field_selector: f.field_selector || f.selector || '',
-      field_purpose: f.field_purpose || f.purpose || 'other',
-      preset_value: f.preset_value || '',
-      is_sensitive: f.is_sensitive ?? false,
-      is_required: f.required ?? f.is_required ?? false,
-      is_file_upload: f.is_file_upload ?? false,
-      options: f.options || null,
-      sort_order: i,
-      status: 'ai' as const,
-      source: 'ai' as const,
-      original_selector: f.field_selector || f.selector || '',
-    }));
-
     const forms = result?.forms || [];
     const editingSteps: EditingStep[] = forms.map((form: any, i: number) => ({
+      // Prefer per-form fields from analysis result; fallback to global fields for step 0.
       step_order: i,
       page_url: form.page_url || '',
       form_type: form.form_type || 'target',
       form_selector: form.form_selector || '',
       submit_selector: form.submit_selector || '',
-      ai_confidence: form.confidence ?? form.ai_confidence ?? null,
-      captcha_detected: form.captcha_detected ?? false,
-      two_factor_expected: form.two_factor_expected ?? false,
       human_breakpoint: form.human_breakpoint ?? false,
-      status: 'pending' as const,
-      fields: editorFields.filter((_: any, fi: number) => {
-        // Assign fields to the first form for now (simple case)
-        return forms.length === 1 || i === 0;
-      }),
+      fields: this.mapEditorFields(
+        Array.isArray(form.fields) && form.fields.length > 0
+          ? form.fields
+          : (i === 0 ? fields : [])
+      ),
     }));
 
     // If no forms at all, create a single step with all fields
@@ -458,12 +478,8 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
         form_type: 'target',
         form_selector: '',
         submit_selector: '',
-        ai_confidence: null,
-        captcha_detected: false,
-        two_factor_expected: false,
         human_breakpoint: false,
-        status: 'pending',
-        fields: editorFields,
+        fields: this.mapEditorFields(fields),
       });
     }
 
@@ -479,11 +495,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
       form_type: s.form_type,
       form_selector: s.form_selector,
       submit_selector: s.submit_selector,
-      ai_confidence: s.ai_confidence ?? null,
-      captcha_detected: s.captcha_detected ?? false,
-      two_factor_expected: s.two_factor_expected ?? false,
       human_breakpoint: s.human_breakpoint ?? false,
-      status: s.status || 'pending',
       fields: (s.fields || []).map((f: any, i: number) => ({
         temp_id: f.temp_id || crypto.randomUUID(),
         field_name: f.field_name || '',
@@ -496,8 +508,6 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
         is_file_upload: f.is_file_upload ?? false,
         options: f.options || null,
         sort_order: f.sort_order ?? i,
-        status: f.status || 'ai',
-        source: f.source || 'ai',
         original_selector: f.original_selector || f.field_selector || '',
       })),
     }));
@@ -584,8 +594,6 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
       is_file_upload: false,
       options: null,
       sort_order: this.currentFields().length,
-      status: 'added',
-      source: 'user',
       original_selector: data.selector,
     };
 
@@ -651,28 +659,6 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
     }
   }
 
-  onCaptchaToggle(value: boolean) {
-    const stepIdx = this.activeStepIndex();
-    const stepsClone = structuredClone(this.steps());
-    if (stepsClone[stepIdx]) {
-      stepsClone[stepIdx].captcha_detected = value;
-      this.steps.set(stepsClone);
-      this.currentStepCaptcha.set(value);
-      this.draftSave$.next();
-    }
-  }
-
-  on2faToggle(value: boolean) {
-    const stepIdx = this.activeStepIndex();
-    const stepsClone = structuredClone(this.steps());
-    if (stepsClone[stepIdx]) {
-      stepsClone[stepIdx].two_factor_expected = value;
-      this.steps.set(stepsClone);
-      this.currentStep2fa.set(value);
-      this.draftSave$.next();
-    }
-  }
-
   onBreakpointToggle(value: boolean) {
     const stepIdx = this.activeStepIndex();
     const stepsClone = structuredClone(this.steps());
@@ -708,8 +694,6 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
 
     // Call backend to execute login in the existing VNC session
     this.editorService.executeLogin(this.analysisId(), loginFields, targetUrl, submitSelector, {
-      captcha_detected: step.captcha_detected,
-      two_factor_expected: step.two_factor_expected,
       human_breakpoint: step.human_breakpoint,
     }).subscribe({
       error: (err) => {
@@ -732,29 +716,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
   }
 
   private transitionToTargetPhase(targetResult: any, targetFields: any[]) {
-    // Mark login step as confirmed
     const stepsClone = structuredClone(this.steps());
-    if (stepsClone.length > 0) {
-      stepsClone[0].status = 'confirmed';
-    }
-
-    // Build target editor fields
-    const editorFields: EditorField[] = targetFields.map((f: any, i: number) => ({
-      temp_id: crypto.randomUUID(),
-      field_name: f.field_name || f.name || '',
-      field_type: f.field_type || f.type || 'text',
-      field_selector: f.field_selector || f.selector || '',
-      field_purpose: f.field_purpose || f.purpose || 'other',
-      preset_value: f.preset_value || '',
-      is_sensitive: f.is_sensitive ?? false,
-      is_required: f.required ?? f.is_required ?? false,
-      is_file_upload: f.is_file_upload ?? false,
-      options: f.options || null,
-      sort_order: i,
-      status: 'ai' as const,
-      source: 'ai' as const,
-      original_selector: f.field_selector || f.selector || '',
-    }));
 
     // Build target step(s) from result
     const targetForms = targetResult?.forms || [];
@@ -765,12 +727,12 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
           form_type: form.form_type || 'target',
           form_selector: form.form_selector || '',
           submit_selector: form.submit_selector || '',
-          ai_confidence: form.confidence ?? form.ai_confidence ?? null,
-          captcha_detected: form.captcha_detected ?? false,
-          two_factor_expected: form.two_factor_expected ?? false,
           human_breakpoint: form.human_breakpoint ?? false,
-          status: 'pending' as const,
-          fields: editorFields,
+          fields: this.mapEditorFields(
+            Array.isArray(form.fields) && form.fields.length > 0
+              ? form.fields
+              : (i === 0 ? targetFields : [])
+          ),
         }))
       : [{
           step_order: stepsClone.length,
@@ -778,12 +740,8 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
           form_type: 'target' as const,
           form_selector: '',
           submit_selector: '',
-          ai_confidence: null,
-          captcha_detected: false,
-          two_factor_expected: false,
           human_breakpoint: false,
-          status: 'pending' as const,
-          fields: editorFields,
+          fields: this.mapEditorFields(targetFields),
         }];
 
     // Append target steps after login
@@ -826,8 +784,6 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
   }
 
   onCancel() {
-    this.loginExecuting.set(false);
-    this.captchaWaiting.set(false);
     this.editorService.cancelEditing(this.analysisId()).subscribe({
       next: () => this.cancelled.emit(),
       error: () => this.cancelled.emit(),
@@ -846,7 +802,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
   private handleSessionError(err: any) {
     if (err.status === 404 && !this.sessionExpired) {
       this.sessionExpired = true;
-      this.notify.warn('VNC session expired or lost. Closing visual editor.');
+      alert('VNC session expired or lost. The editor will close.');
       this.cancelled.emit();
     }
   }
@@ -855,8 +811,6 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
     const step = this.steps()[this.activeStepIndex()];
     this.currentFields.set(step?.fields || []);
     this.currentStepBreakpoint.set(step?.human_breakpoint ?? false);
-    this.currentStepCaptcha.set(step?.captcha_detected ?? false);
-    this.currentStep2fa.set(step?.two_factor_expected ?? false);
   }
 
   private updateSelectedField() {
@@ -896,6 +850,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
   // --- Divider drag ---
 
   startDrag(event: MouseEvent) {
+    if (window.innerWidth < 1280 || this.editorHidden()) return;
     event.preventDefault();
     this.isDragging = true;
     document.addEventListener('mousemove', this.boundMouseMove);
@@ -918,6 +873,30 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
     document.removeEventListener('mouseup', this.boundMouseUp);
   }
 
+  toggleEditorHidden() {
+    this.editorHidden.update((v) => !v);
+  }
+
+  resetSplit() {
+    this.splitPosition.set(65);
+    this.editorHidden.set(false);
+  }
+
+  private withVncDefaults(url: string): string {
+    if (!url) return '';
+
+    const ensure = (key: string, value: string) => {
+      if (!new RegExp(`[?&]${key}=`).test(url)) {
+        url += (url.includes('?') ? '&' : '?') + `${key}=${value}`;
+      }
+    };
+
+    ensure('resize', 'scale');
+    ensure('autoconnect', '1');
+    ensure('reconnect', '1');
+    return url;
+  }
+
   private buildFormDefinitions(): FormDefinition[] {
     return this.steps().map((step, i) => ({
       id: `vnc-step-${i}`,
@@ -927,9 +906,6 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
       form_type: step.form_type,
       form_selector: step.form_selector,
       submit_selector: step.submit_selector,
-      ai_confidence: step.ai_confidence,
-      captcha_detected: step.captcha_detected,
-      two_factor_expected: step.two_factor_expected,
       human_breakpoint: step.human_breakpoint,
       fields: step.fields.map((f, fi) => ({
         id: f.temp_id,
@@ -947,6 +923,23 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
       })),
       created_at: '',
       updated_at: '',
+    }));
+  }
+
+  private mapEditorFields(sourceFields: any[]): EditorField[] {
+    return (sourceFields || []).map((f: any, i: number) => ({
+      temp_id: crypto.randomUUID(),
+      field_name: f.field_name || f.name || '',
+      field_type: f.field_type || f.type || 'text',
+      field_selector: f.field_selector || f.selector || '',
+      field_purpose: f.field_purpose || f.purpose || 'other',
+      preset_value: f.preset_value || '',
+      is_sensitive: f.is_sensitive ?? false,
+      is_required: f.required ?? f.is_required ?? false,
+      is_file_upload: f.is_file_upload ?? false,
+      options: f.options || null,
+      sort_order: i,
+      original_selector: f.original_selector || f.field_selector || f.selector || '',
     }));
   }
 

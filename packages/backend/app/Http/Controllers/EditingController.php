@@ -190,9 +190,6 @@ class EditingController extends Controller
                 'form_type' => $step['form_type'] ?? 'target',
                 'form_selector' => $step['form_selector'] ?? '',
                 'submit_selector' => $step['submit_selector'] ?? '',
-                'ai_confidence' => $step['ai_confidence'] ?? null,
-                'captcha_detected' => $step['captcha_detected'] ?? false,
-                'two_factor_expected' => $step['two_factor_expected'] ?? false,
                 'human_breakpoint' => $step['human_breakpoint'] ?? false,
             ]);
 
@@ -256,8 +253,6 @@ class EditingController extends Controller
             'login_fields' => ['required', 'array'],
             'target_url' => ['required', 'string'],
             'submit_selector' => ['sometimes', 'string'],
-            'captcha_detected' => ['sometimes', 'boolean'],
-            'two_factor_expected' => ['sometimes', 'boolean'],
             'human_breakpoint' => ['sometimes', 'boolean'],
         ]);
 
@@ -267,8 +262,6 @@ class EditingController extends Controller
                 loginFields: $request->input('login_fields'),
                 targetUrl: $request->input('target_url'),
                 submitSelector: $request->input('submit_selector', ''),
-                captchaDetected: $request->boolean('captcha_detected', false),
-                twoFactorExpected: $request->boolean('two_factor_expected', false),
                 humanBreakpoint: $request->boolean('human_breakpoint', false),
             );
 

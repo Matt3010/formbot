@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Text, Boolean, Integer, DateTime, Numeric, ForeignKey
+from sqlalchemy import Column, String, Text, Boolean, Integer, DateTime, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from app.database import Base
 import uuid
@@ -14,9 +14,6 @@ class FormDefinition(Base):
     form_type = Column(String(50), nullable=True)
     form_selector = Column(Text, nullable=True)
     submit_selector = Column(Text, nullable=True)
-    ai_confidence = Column(Numeric(3, 2), nullable=True)
-    captcha_detected = Column(Boolean, default=False)
-    two_factor_expected = Column(Boolean, default=False)
     human_breakpoint = Column(Boolean, default=False)
     created_at = Column(DateTime)
     updated_at = Column(DateTime)

@@ -19,8 +19,7 @@ return new class extends Migration
             $table->enum('form_type', ['login', 'intermediate', 'target']);
             $table->text('form_selector')->nullable();
             $table->text('submit_selector')->nullable();
-            $table->decimal('ai_confidence', 3, 2)->nullable();
-            $table->boolean('captcha_detected')->default(false);
+            $table->boolean('human_breakpoint')->default(false);
             $table->timestamps();
 
             $table->unique('id');

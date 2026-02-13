@@ -83,7 +83,7 @@ import { ScreenshotViewerComponent } from '../../shared/components/screenshot-vi
 
                 <div class="flex items-center gap-1 mt-1">
                   @if (exec.screenshot_path) {
-                    <button mat-icon-button matTooltip="View Screenshot" (click)="viewScreenshot(exec.screenshot_path!)">
+                    <button mat-icon-button matTooltip="View Screenshot" (click)="viewScreenshot(exec.id)">
                       <mat-icon>photo_camera</mat-icon>
                     </button>
                   }
@@ -164,68 +164,39 @@ export class ExecutionLogComponent implements OnInit, OnChanges {
 
     this.executions.update(execs => {
       const idx = execs.findIndex(e => e.id === execId);
-        if (idx !== -1) {
-          // Update existing execution in-place
-          const updated = { ...execs[idx] };
-          if (data.status === 'success' || data.status === 'failed' || data.status === 'dry_run_ok') {
-            updated.status = data.status as any;
-            updated.completed_at = new Date().toISOString();
-            if (data.error) updated.error_message = data.error;
-            if (data.screenshot) updated.screenshot_path = data.screenshot;
-          } else if (data.status === 'waiting_manual') {
-            updated.status = 'waiting_manual';
-            if (data.vnc_session_id) {
-              updated.vnc_session_id = data.vnc_session_id;
-            }
-            if (data.vnc_url) {
-              const existingSteps = [...(updated.steps_log || [])];
-              const lastStep = existingSteps[existingSteps.length - 1] as any;
-              const isDuplicateWaitingStep =
-                lastStep?.status === 'waiting_manual' &&
-                lastStep?.vnc_session_id === (data.vnc_session_id || null) &&
-                lastStep?.vnc_url === data.vnc_url;
-
-              if (!isDuplicateWaitingStep) {
-                existingSteps.push({
-                  status: 'waiting_manual',
-                  vnc_url: data.vnc_url,
-                  waiting_reason: data.reason || null,
-                  vnc_session_id: data.vnc_session_id || null,
-                  timestamp: new Date().toISOString(),
-                });
-              }
-              updated.steps_log = existingSteps;
-            }
-          } else if (data.status === 'running') {
-            updated.status = 'running';
-          }
-          return [...execs.slice(0, idx), updated, ...execs.slice(idx + 1)];
-        } else {
-          // New execution - add to front of list
-          const stepsLog = data.vnc_url ? [{
-            status: 'waiting_manual',
-            vnc_url: data.vnc_url,
-            waiting_reason: data.reason || null,
-            vnc_session_id: data.vnc_session_id || null,
-            timestamp: new Date().toISOString(),
-          }] : [];
-          const newExec: ExecutionLog = {
-            id: execId,
-            task_id: data.task_id,
-            started_at: data.started_at || new Date().toISOString(),
-            completed_at: null,
-            status: (data.status as any) || 'running',
-            is_dry_run: data.is_dry_run || false,
-            retry_count: 0,
-            error_message: null,
-            screenshot_path: null,
-            steps_log: stepsLog,
-            vnc_session_id: data.vnc_session_id || null,
-            created_at: new Date().toISOString(),
-          };
-          return [newExec, ...execs];
+      if (idx !== -1) {
+        // Update existing execution in-place
+        const updated = { ...execs[idx] };
+        if (data.status === 'success' || data.status === 'failed' || data.status === 'dry_run_ok') {
+          updated.status = data.status as any;
+          updated.completed_at = new Date().toISOString();
+          if (data.error) updated.error_message = data.error;
+          if (data.screenshot) updated.screenshot_path = data.screenshot;
+        } else if (data.status === 'waiting_manual') {
+          updated.status = 'waiting_manual';
+        } else if (data.status === 'running') {
+          updated.status = 'running';
         }
-      });
+        return [...execs.slice(0, idx), updated, ...execs.slice(idx + 1)];
+      } else {
+        // New execution - add to front of list
+        const newExec: ExecutionLog = {
+          id: execId,
+          task_id: data.task_id,
+          started_at: data.started_at || new Date().toISOString(),
+          completed_at: null,
+          status: (data.status as any) || 'running',
+          is_dry_run: data.is_dry_run || false,
+          retry_count: 0,
+          error_message: null,
+          screenshot_path: null,
+          steps_log: [],
+          vnc_session_id: null,
+          created_at: new Date().toISOString(),
+        };
+        return [newExec, ...execs];
+      }
+    });
   }
 
   loadExecutions() {
@@ -273,9 +244,9 @@ export class ExecutionLogComponent implements OnInit, OnChanges {
     }
   }
 
-  viewScreenshot(path: string) {
+  viewScreenshot(executionId: string) {
     this.dialog.open(ScreenshotViewerComponent, {
-      data: { screenshotPath: path },
+      data: { executionId },
       maxWidth: '90vw',
       maxHeight: '90vh',
     });

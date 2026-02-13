@@ -26,12 +26,12 @@ class TaskExecutor:
         if hasattr(self, '_user_id') and self._user_id and hasattr(self, '_execution_id') and self._execution_id:
             self.broadcaster.trigger_execution(self._user_id, str(self._execution_id), event, data)
 
-    async def _vnc_pause(self, execution, steps_log, step_info, reason: str, browser) -> str | None:
+    async def _vnc_pause(self, execution, steps_log, step_info, reason: str, browser) -> bool:
         """Activate VNC viewer and wait for user to resume.
 
         Uses the pre-reserved display session and activates x11vnc + websockify
         so the user can see and interact with the browser.
-        Returns None if resumed successfully, otherwise an error message.
+        Returns True if resumed successfully, False if timed out.
         """
         # Activate VNC on the reserved display (starts x11vnc + websockify)
         session_id = self._vnc_session_id
@@ -62,24 +62,11 @@ class TaskExecutor:
         })
 
         # WAIT for user to complete manual action and click resume
-        wait_result = await self.vnc_manager.wait_for_resume(session_id, timeout=3600)
-        if wait_result is True:
-            wait_state = "resumed"
-        elif wait_result is False:
-            wait_state = "timeout"
-        elif isinstance(wait_result, str):
-            wait_state = wait_result
-        else:
-            wait_state = "timeout"
+        resumed = await self.vnc_manager.wait_for_resume(session_id, timeout=3600)
 
-        if wait_state != "resumed":
-            failure_message = (
-                f'Execution aborted by user during manual intervention ({reason})'
-                if wait_state == "stopped"
-                else f'VNC session timed out waiting for manual intervention ({reason})'
-            )
+        if not resumed:
             execution.status = 'failed'
-            execution.error_message = failure_message
+            execution.error_message = f'VNC session timed out waiting for manual intervention ({reason})'
             execution.completed_at = datetime.utcnow()
             execution.steps_log = steps_log
             self.db.commit()
@@ -87,11 +74,11 @@ class TaskExecutor:
             self._broadcast("execution.failed", {
                 "task_id": str(execution.task_id),
                 "status": "failed",
-                "error": failure_message,
+                "error": execution.error_message,
             })
 
             await browser.close()
-            return failure_message
+            return False
 
         # User resumed - kill x11vnc and revoke token, keep Xvfb (browser still needs it)
         self.vnc_manager.deactivate_vnc(session_id)
@@ -110,7 +97,7 @@ class TaskExecutor:
             "reason": reason,
         })
 
-        return None
+        return True
 
     async def execute(self, task_id: str, execution_id: str = None,
                       is_dry_run: bool = False,
@@ -159,13 +146,13 @@ class TaskExecutor:
 
         steps_log = []
 
-        # Check if any form needs VNC (captcha or 2FA) - if so, use headed mode on Xvfb
+        # Check if any form needs VNC manual breakpoint - if so, use headed mode on Xvfb
         form_defs = (self.db.query(FormDefinition)
             .filter(FormDefinition.task_id == task.id)
             .order_by(FormDefinition.step_order)
             .all())
 
-        needs_vnc = any(fd.captcha_detected or fd.two_factor_expected or fd.human_breakpoint for fd in form_defs)
+        needs_vnc = any(fd.human_breakpoint for fd in form_defs)
 
         # For VNC: reserve a display (starts only Xvfb) so Playwright can render.
         # x11vnc + websockify are started later only when a pause is actually needed.
@@ -234,18 +221,6 @@ class TaskExecutor:
                             steps_log.append(step_info)
                             raise Exception(step_info["error"])
 
-                    # Pre-submit VNC pause: CAPTCHA (user solves captcha before fields are filled)
-                    if form_def.captcha_detected:
-                        pause_error = await self._vnc_pause(
-                            execution, steps_log, step_info, "captcha", browser
-                        )
-                        if pause_error:
-                            return {
-                                "execution_id": str(execution.id),
-                                "status": "failed",
-                                "error": pause_error,
-                            }
-
                     # Fill form fields
                     fields = (self.db.query(FormField)
                         .filter(FormField.form_definition_id == form_def.id)
@@ -303,14 +278,14 @@ class TaskExecutor:
 
                     # Human breakpoint: pause for manual review after filling
                     if form_def.human_breakpoint:
-                        pause_error = await self._vnc_pause(
+                        resumed = await self._vnc_pause(
                             execution, steps_log, step_info, "breakpoint", browser
                         )
-                        if pause_error:
+                        if not resumed:
                             return {
                                 "execution_id": str(execution.id),
                                 "status": "failed",
-                                "error": pause_error,
+                                "error": "VNC timeout (breakpoint)"
                             }
 
                     # Check if this is the last step and dry run
@@ -364,25 +339,6 @@ class TaskExecutor:
                         "total_steps": len(form_defs),
                         "status": step_info["status"],
                     })
-
-                    # Post-submit VNC pause: 2FA (user enters OTP/code after login submit)
-                    if form_def.two_factor_expected:
-                        tfa_step_info = {
-                            "step": form_def.step_order,
-                            "page_url": form_def.page_url,
-                            "form_type": "2fa_intervention",
-                            "status": "started",
-                            "timestamp": datetime.utcnow().isoformat()
-                        }
-                        pause_error = await self._vnc_pause(
-                            execution, steps_log, tfa_step_info, "2fa", browser
-                        )
-                        if pause_error:
-                            return {
-                                "execution_id": str(execution.id),
-                                "status": "failed",
-                                "error": pause_error,
-                            }
 
                 # Take final screenshot
                 screenshot_name = f"{execution.id}_final.png"

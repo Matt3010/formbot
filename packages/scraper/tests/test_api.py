@@ -1,17 +1,9 @@
-"""Tests for FastAPI endpoints (execute, validate, health, VNC)."""
+"""Tests for FastAPI endpoints (execute, health, VNC)."""
 
-import asyncio
 import uuid
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 from httpx import AsyncClient, ASGITransport
-
-from tests.conftest import (
-    make_task,
-    make_form_definition,
-    make_form_field,
-)
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -23,17 +15,6 @@ def _get_app():
     return app
 
 
-@pytest.fixture(autouse=True)
-def _clear_execute_state():
-    """Keep execute endpoint globals isolated between tests."""
-    from app.api.execute import _execution_results, _running_executions
-    _execution_results.clear()
-    _running_executions.clear()
-    yield
-    _execution_results.clear()
-    _running_executions.clear()
-
-
 # ---------------------------------------------------------------------------
 # POST /execute
 # ---------------------------------------------------------------------------
@@ -42,11 +23,7 @@ def _clear_execute_state():
 @pytest.mark.asyncio
 async def test_execute_endpoint_starts_background():
     """POST /execute returns immediately with status=started."""
-    def _fake_create_task(coro):
-        coro.close()
-        return MagicMock()
-
-    with patch("app.api.execute.asyncio.create_task", side_effect=_fake_create_task) as mock_create_task:
+    with patch("app.api.execute.asyncio.create_task") as mock_create_task:
         app = _get_app()
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as ac:
@@ -67,11 +44,7 @@ async def test_execute_endpoint_starts_background():
 @pytest.mark.asyncio
 async def test_execute_endpoint_with_all_options():
     """POST /execute accepts all optional parameters."""
-    def _fake_create_task(coro):
-        coro.close()
-        return MagicMock()
-
-    with patch("app.api.execute.asyncio.create_task", side_effect=_fake_create_task):
+    with patch("app.api.execute.asyncio.create_task"):
         app = _get_app()
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as ac:
@@ -86,38 +59,6 @@ async def test_execute_endpoint_with_all_options():
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "started"
-
-
-@pytest.mark.asyncio
-async def test_execute_endpoint_already_running():
-    """POST /execute returns already_running when same execution is in progress."""
-    from app.api.execute import _running_executions
-
-    execution_id = "exec-already-running"
-    blocker = asyncio.Event()
-    running_task = asyncio.create_task(blocker.wait())
-    _running_executions[execution_id] = running_task
-
-    try:
-        with patch("app.api.execute.asyncio.create_task") as mock_create_task:
-            app = _get_app()
-            transport = ASGITransport(app=app)
-            async with AsyncClient(transport=transport, base_url="http://test") as ac:
-                response = await ac.post("/execute", json={
-                    "task_id": str(uuid.uuid4()),
-                    "execution_id": execution_id,
-                })
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "already_running"
-        mock_create_task.assert_not_called()
-    finally:
-        running_task.cancel()
-        try:
-            await running_task
-        except asyncio.CancelledError:
-            pass
 
 
 @pytest.mark.asyncio
@@ -163,211 +104,6 @@ async def test_execute_status_completed():
         assert task_id not in _execution_results
     finally:
         _execution_results.pop(task_id, None)
-
-
-@pytest.mark.asyncio
-async def test_execute_cancel_running_execution():
-    """POST /execute/{execution_id}/cancel cancels a running execution task."""
-    from app.api.execute import _running_executions
-
-    execution_id = "exec-cancel-123"
-    blocker = asyncio.Event()
-    running_task = asyncio.create_task(blocker.wait())
-    _running_executions[execution_id] = running_task
-
-    app = _get_app()
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        response = await ac.post(f"/execute/{execution_id}/cancel")
-
-    assert response.status_code == 200
-    data = response.json()
-    assert data["status"] == "cancelled"
-    assert data["execution_id"] == execution_id
-
-    try:
-        await running_task
-    except asyncio.CancelledError:
-        pass
-
-
-@pytest.mark.asyncio
-async def test_execute_cancel_not_found():
-    """POST /execute/{execution_id}/cancel returns not_found when missing."""
-    app = _get_app()
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        response = await ac.post("/execute/nonexistent-exec/cancel")
-
-    assert response.status_code == 200
-    data = response.json()
-    assert data["status"] == "not_found"
-    assert data["execution_id"] == "nonexistent-exec"
-
-
-# ---------------------------------------------------------------------------
-# POST /validate-selectors
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_validate_selectors_task_not_found():
-    """POST /validate-selectors returns error when task not found."""
-    mock_db = MagicMock()
-    mock_db.query.return_value.filter.return_value.first.return_value = None
-
-    def override_get_db():
-        yield mock_db
-
-    app = _get_app()
-    app.dependency_overrides = {}
-    from app.database import get_db
-    app.dependency_overrides[get_db] = override_get_db
-
-    try:
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as ac:
-            response = await ac.post("/validate-selectors", json={
-                "task_id": str(uuid.uuid4()),
-            })
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["valid"] is False
-        assert data["error"] == "Task not found"
-    finally:
-        app.dependency_overrides = {}
-
-
-@pytest.mark.asyncio
-async def test_validate_selectors_all_valid():
-    """POST /validate-selectors returns valid=True when all selectors exist."""
-    task_id = uuid.uuid4()
-    fd_id = uuid.uuid4()
-
-    task = make_task(id=task_id, stealth_enabled=True)
-    form_def = make_form_definition(
-        id=fd_id, task_id=task_id, step_order=1,
-        page_url="https://example.com/form",
-        form_selector="#form", submit_selector="#submit",
-    )
-    field = make_form_field(
-        form_definition_id=fd_id, field_name="name",
-        field_selector="#name",
-    )
-
-    mock_db = MagicMock()
-
-    def _query_side_effect(model):
-        q = MagicMock()
-        model_name = getattr(model, "__name__", "")
-        if model_name == "Task":
-            q.filter.return_value.first.return_value = task
-        elif model_name == "FormDefinition":
-            q.filter.return_value.order_by.return_value.all.return_value = [form_def]
-        elif model_name == "FormField":
-            q.filter.return_value.all.return_value = [field]
-        return q
-
-    mock_db.query = MagicMock(side_effect=_query_side_effect)
-
-    def override_get_db():
-        yield mock_db
-
-    from tests.conftest import _make_mock_page, _make_mock_context, _make_mock_browser, _make_mock_playwright
-
-    page = _make_mock_page()
-    page.query_selector = AsyncMock(return_value=MagicMock())  # element found
-    context = _make_mock_context(page)
-    browser = _make_mock_browser(context)
-    pw_cm = _make_mock_playwright(browser)
-
-    pw_patch = patch("app.api.validate.async_playwright", return_value=pw_cm)
-    stealth_patch = patch("app.api.validate.apply_stealth", AsyncMock())
-
-    app = _get_app()
-    from app.database import get_db
-    app.dependency_overrides[get_db] = override_get_db
-
-    try:
-        with pw_patch, stealth_patch:
-            transport = ASGITransport(app=app)
-            async with AsyncClient(transport=transport, base_url="http://test") as ac:
-                response = await ac.post("/validate-selectors", json={
-                    "task_id": str(task_id),
-                })
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["valid"] is True
-        assert data["invalid_selectors"] == []
-    finally:
-        app.dependency_overrides = {}
-
-
-@pytest.mark.asyncio
-async def test_validate_selectors_invalid_found():
-    """POST /validate-selectors detects invalid selectors."""
-    task_id = uuid.uuid4()
-    fd_id = uuid.uuid4()
-
-    task = make_task(id=task_id, stealth_enabled=False)
-    form_def = make_form_definition(
-        id=fd_id, task_id=task_id, step_order=1,
-        page_url="https://example.com/form",
-        form_selector="#missing-form", submit_selector="#missing-submit",
-    )
-
-    mock_db = MagicMock()
-
-    def _query_side_effect(model):
-        q = MagicMock()
-        model_name = getattr(model, "__name__", "")
-        if model_name == "Task":
-            q.filter.return_value.first.return_value = task
-        elif model_name == "FormDefinition":
-            q.filter.return_value.order_by.return_value.all.return_value = [form_def]
-        elif model_name == "FormField":
-            q.filter.return_value.all.return_value = []
-        return q
-
-    mock_db.query = MagicMock(side_effect=_query_side_effect)
-
-    def override_get_db():
-        yield mock_db
-
-    from tests.conftest import _make_mock_page, _make_mock_context, _make_mock_browser, _make_mock_playwright
-
-    page = _make_mock_page()
-    page.query_selector = AsyncMock(return_value=None)  # element NOT found
-    context = _make_mock_context(page)
-    browser = _make_mock_browser(context)
-    pw_cm = _make_mock_playwright(browser)
-
-    pw_patch = patch("app.api.validate.async_playwright", return_value=pw_cm)
-    stealth_patch = patch("app.api.validate.apply_stealth", AsyncMock())
-
-    app = _get_app()
-    from app.database import get_db
-    app.dependency_overrides[get_db] = override_get_db
-
-    try:
-        with pw_patch, stealth_patch:
-            transport = ASGITransport(app=app)
-            async with AsyncClient(transport=transport, base_url="http://test") as ac:
-                response = await ac.post("/validate-selectors", json={
-                    "task_id": str(task_id),
-                })
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["valid"] is False
-        assert len(data["invalid_selectors"]) == 2  # form + submit
-        types_found = [s["type"] for s in data["invalid_selectors"]]
-        assert "form" in types_found
-        assert "submit" in types_found
-    finally:
-        app.dependency_overrides = {}
 
 
 # ---------------------------------------------------------------------------

@@ -21,7 +21,7 @@ class ExecutionLogResource extends JsonResource
             'is_dry_run' => $this->is_dry_run,
             'retry_count' => $this->retry_count,
             'error_message' => $this->error_message,
-            'screenshot_path' => $this->screenshot_path ? true : false,
+            'screenshot_path' => $this->screenshot_path,
             'steps_log' => $this->steps_log,
             'vnc_session_id' => $this->vnc_session_id,
             'task' => new TaskResource($this->whenLoaded('task')),

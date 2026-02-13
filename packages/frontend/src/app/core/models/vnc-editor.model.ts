@@ -13,8 +13,6 @@ export interface EditorField {
   is_file_upload: boolean;
   options: string[] | null;
   sort_order: number;
-  status: 'ai' | 'confirmed' | 'added' | 'modified';
-  source: 'ai' | 'user';
   original_selector: string;
 }
 
@@ -24,11 +22,7 @@ export interface EditingStep {
   form_type: 'login' | 'intermediate' | 'target';
   form_selector: string;
   submit_selector: string;
-  ai_confidence: number | null;
-  captcha_detected: boolean;
-  two_factor_expected: boolean;
   human_breakpoint: boolean;
-  status: 'pending' | 'confirmed';
   fields: EditorField[];
 }
 

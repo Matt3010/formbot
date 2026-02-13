@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Http\Requests\AnalyzeUrlRequest;
 use App\Models\Analysis;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 
 class AnalyzerController extends Controller
 {
@@ -37,26 +36,5 @@ class AnalyzerController extends Controller
             'analysis_id' => $analysis->id,
             'message' => 'Manual analysis created. Open the editor to configure fields.',
         ]);
-    }
-
-    /**
-     * Validate CSS selectors on a page (remains synchronous - fast operation).
-     */
-    public function validateSelectors(Request $request): JsonResponse
-    {
-        $request->validate([
-            'url' => ['required', 'url'],
-            'selectors' => ['required', 'array'],
-            'selectors.*' => ['required', 'string'],
-        ]);
-
-        $scraperClient = app(\App\Services\ScraperClient::class);
-
-        $result = $scraperClient->validateSelectors(
-            url: $request->input('url'),
-            selectors: $request->input('selectors'),
-        );
-
-        return response()->json($result);
     }
 }

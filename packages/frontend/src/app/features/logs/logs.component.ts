@@ -143,7 +143,7 @@ import { ScreenshotViewerComponent } from '../../shared/components/screenshot-vi
               <th mat-header-cell *matHeaderCellDef>Actions</th>
               <td mat-cell *matCellDef="let log">
                 @if (log.screenshot_path) {
-                  <button mat-icon-button matTooltip="Screenshot" (click)="viewScreenshot(log.screenshot_path)">
+                  <button mat-icon-button matTooltip="Screenshot" (click)="viewScreenshot(log.id)">
                     <mat-icon>photo_camera</mat-icon>
                   </button>
                 }
@@ -192,6 +192,7 @@ export class LogsComponent implements OnInit {
 
   displayedColumns = ['status', 'task_id', 'started_at', 'completed_at', 'retry_count', 'error_message', 'actions'];
   dataSource = new MatTableDataSource<ExecutionLog>([]);
+  private hadStatusFilter = false;
 
   ngOnInit() {
     this.loadLogs();
@@ -206,10 +207,12 @@ export class LogsComponent implements OnInit {
     this.loading.set(true);
     const params: Record<string, string> = {};
     if (this.statusFilter) params['status'] = this.statusFilter;
+    this.hadStatusFilter = !!this.statusFilter;
 
     this.api.get<{ data: ExecutionLog[] }>('/logs', params).subscribe({
       next: (res) => {
         this.dataSource.data = res.data;
+        this.dataSource.filter = this.searchText.trim().toLowerCase();
         this.loading.set(false);
       },
       error: () => this.loading.set(false)
@@ -218,7 +221,7 @@ export class LogsComponent implements OnInit {
 
   applyFilter() {
     this.dataSource.filter = this.searchText.trim().toLowerCase();
-    if (this.statusFilter) {
+    if (this.statusFilter || this.hadStatusFilter) {
       this.loadLogs();
     }
   }
@@ -227,9 +230,9 @@ export class LogsComponent implements OnInit {
     this.router.navigate(['/tasks', taskId]);
   }
 
-  viewScreenshot(path: string) {
+  viewScreenshot(executionId: string) {
     this.dialog.open(ScreenshotViewerComponent, {
-      data: { screenshotPath: path },
+      data: { executionId },
       maxWidth: '90vw',
       maxHeight: '90vh',
     });

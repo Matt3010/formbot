@@ -52,38 +52,6 @@ class ScraperClient
     }
 
     /**
-     * Validate CSS selectors on a page.
-     */
-    public function validateSelectors(string $url = '', array $selectors = [], ?string $taskId = null): array
-    {
-        $payload = [
-            'url' => $url,
-            'selectors' => $selectors,
-        ];
-
-        if ($taskId) {
-            $payload['task_id'] = $taskId;
-        }
-
-        $response = Http::timeout($this->timeout)
-            ->post("{$this->baseUrl}/validate-selectors", $payload);
-
-        if (!$response->successful()) {
-            Log::error('Scraper validate selectors failed', [
-                'url' => $url,
-                'status' => $response->status(),
-                'body' => $response->body(),
-            ]);
-
-            throw new \RuntimeException(
-                'Failed to validate selectors: ' . ($response->json('detail') ?? $response->body())
-            );
-        }
-
-        return $response->json();
-    }
-
-    /**
      * Cancel a running analysis on the scraper.
      */
     public function cancelAnalysis(string $analysisId): array
@@ -138,23 +106,6 @@ class ScraperClient
         if (!$response->successful()) {
             throw new \RuntimeException(
                 'Failed to stop VNC session: ' . ($response->json('detail') ?? $response->body())
-            );
-        }
-
-        return $response->json();
-    }
-
-    /**
-     * Cancel a running execution in the scraper.
-     */
-    public function cancelExecution(string $executionId): array
-    {
-        $response = Http::timeout(30)
-            ->post("{$this->baseUrl}/execute/{$executionId}/cancel");
-
-        if (!$response->successful()) {
-            throw new \RuntimeException(
-                'Failed to cancel execution: ' . ($response->json('detail') ?? $response->body())
             );
         }
 
@@ -275,15 +226,13 @@ class ScraperClient
     /**
      * Execute login in an existing editing session (fill + submit + navigate to target).
      */
-    public function executeLoginInSession(string $analysisId, array $loginFields, string $targetUrl, string $submitSelector = '', bool $captchaDetected = false, bool $twoFactorExpected = false, bool $humanBreakpoint = false): array
+    public function executeLoginInSession(string $analysisId, array $loginFields, string $targetUrl, string $submitSelector = '', bool $humanBreakpoint = false): array
     {
         $payload = [
             'analysis_id' => $analysisId,
             'login_fields' => $loginFields,
             'target_url' => $targetUrl,
             'submit_selector' => $submitSelector,
-            'captcha_detected' => $captchaDetected,
-            'two_factor_expected' => $twoFactorExpected,
             'human_breakpoint' => $humanBreakpoint,
         ];
 

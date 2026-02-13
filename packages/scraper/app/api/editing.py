@@ -8,10 +8,8 @@ from typing import Optional
 from app.services.highlighter_registry import HighlighterRegistry
 from app.services.broadcaster import Broadcaster
 from app.services.field_highlighter import FieldHighlighter
-from app.api.vnc import get_vnc_manager
 
 router = APIRouter(prefix="/editing")
-MANUAL_INTERVENTION_TIMEOUT_SECONDS = 1800
 
 
 class SetModeRequest(BaseModel):
@@ -127,8 +125,6 @@ async def cancel_editing(request: SessionRequest):
     """User cancelled editing. Signal the session."""
     session = _get_session(request.analysis_id)
     session.cancelled_event.set()
-    # Unblock any pending manual wait immediately.
-    session.resume_event.set()
     return {"status": "cancelled", "analysis_id": request.analysis_id}
 
 
@@ -139,13 +135,6 @@ async def cleanup_editing(request: SessionRequest):
     session = registry.get(request.analysis_id)
     if not session:
         return {"status": "not_found"}
-
-    if session.vnc_session_id:
-        try:
-            vnc_manager = get_vnc_manager()
-            await vnc_manager.stop_session(session.vnc_session_id)
-        except Exception:
-            pass
 
     await registry.cleanup_session(request.analysis_id)
     return {"status": "cleaned_up", "analysis_id": request.analysis_id}
@@ -175,8 +164,6 @@ class ExecuteLoginRequest(BaseModel):
     login_fields: list[LoginFieldPayload]
     target_url: str
     submit_selector: Optional[str] = ""
-    captcha_detected: bool = False
-    two_factor_expected: bool = False
     human_breakpoint: bool = False
 
 
@@ -203,22 +190,13 @@ async def execute_login(request: ExecuteLoginRequest):
                 "needs_vnc": True,
             })
             session.resume_event.clear()
-            deadline = asyncio.get_running_loop().time() + MANUAL_INTERVENTION_TIMEOUT_SECONDS
-            while True:
-                if session.cancelled_event.is_set():
-                    raise RuntimeError("Cancelled by user")
-                if session.resume_event.is_set():
-                    break
-                if asyncio.get_running_loop().time() >= deadline:
-                    raise TimeoutError("Manual intervention timed out")
-                await asyncio.sleep(0.1)
+            await session.resume_event.wait()
             try:
                 await page.wait_for_load_state("networkidle", timeout=15000)
             except Exception:
                 await page.wait_for_timeout(3000)
 
         try:
-            session.cancelled_event.clear()
             # Phase: filling
             broadcaster.trigger_analysis(analysis_id, "LoginExecutionProgress", {
                 "phase": "filling",
@@ -281,12 +259,6 @@ async def execute_login(request: ExecuteLoginRequest):
                 await page.wait_for_timeout(6000)
 
             # Manual Interventions
-            if request.captcha_detected:
-                await _pause_for_human("captcha", "CAPTCHA expected — please solve it in the VNC viewer, then click Resume.")
-
-            if request.two_factor_expected:
-                await _pause_for_human("2fa", "2FA expected — complete verification in the VNC viewer, then click Resume.")
-
             if request.human_breakpoint:
                 await _pause_for_human("human_breakpoint", "Human breakpoint — complete any manual steps in the VNC viewer, then click Resume.")
 
@@ -338,7 +310,7 @@ async def execute_login(request: ExecuteLoginRequest):
 
 @router.post("/resume-login")
 async def resume_login(request: SessionRequest):
-    """Signal that manual CAPTCHA/2FA intervention is complete."""
+    """Signal that manual intervention is complete."""
     session = _get_session(request.analysis_id)
     session.resume_event.set()
     return {"status": "resumed", "analysis_id": request.analysis_id}

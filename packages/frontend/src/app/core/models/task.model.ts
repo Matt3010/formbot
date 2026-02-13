@@ -29,9 +29,6 @@ export interface FormDefinition {
   form_type: 'login' | 'intermediate' | 'target';
   form_selector: string;
   submit_selector: string;
-  ai_confidence: number | null;
-  captcha_detected: boolean;
-  two_factor_expected: boolean;
   human_breakpoint: boolean;
   fields: FormField[];
   created_at: string;
@@ -57,9 +54,6 @@ export interface FormDefinitionPayload {
   form_type: 'login' | 'intermediate' | 'target';
   form_selector: string | null;
   submit_selector: string | null;
-  ai_confidence: number | null;
-  captcha_detected: boolean;
-  two_factor_expected: boolean;
   human_breakpoint: boolean;
   form_fields: FormFieldPayload[];
 }

@@ -1,4 +1,4 @@
-import { Injectable, inject, signal, NgZone } from '@angular/core';
+import { Injectable, inject, signal, NgZone, effect } from '@angular/core';
 import { AuthService } from './auth.service';
 import { Subject, Observable } from 'rxjs';
 import Pusher from 'pusher-js';
@@ -25,10 +25,6 @@ export interface ExecutionProgress {
   error?: string;
   screenshot?: string;
   started_at?: string;
-  vnc_session_id?: string;
-  vnc_url?: string;
-  reason?: string;
-  ws_port?: number;
 }
 
 export interface WaitingManualEvent {

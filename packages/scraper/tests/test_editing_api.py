@@ -249,22 +249,15 @@ def test_cancel_success():
     assert resp.status_code == 200
     assert resp.json()["status"] == "cancelled"
     assert session.cancelled_event.is_set()
-    assert session.resume_event.is_set()
 
 
 # ----- Test /editing/cleanup -----
 
 def test_cleanup_success():
     session = _register_session()
-    mock_vnc = MagicMock()
-    mock_vnc.stop_session = AsyncMock(return_value={"status": "stopped"})
-
-    with patch("app.api.editing.get_vnc_manager", return_value=mock_vnc):
-        resp = client.post("/editing/cleanup", json={"analysis_id": ANALYSIS_ID})
-
+    resp = client.post("/editing/cleanup", json={"analysis_id": ANALYSIS_ID})
     assert resp.status_code == 200
     assert resp.json()["status"] == "cleaned_up"
-    mock_vnc.stop_session.assert_awaited_once_with(session.vnc_session_id)
 
     # Session should be removed
     registry = HighlighterRegistry.get_instance()

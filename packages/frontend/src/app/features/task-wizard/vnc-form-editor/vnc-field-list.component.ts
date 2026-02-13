@@ -30,9 +30,6 @@ import { EditorField } from '../../../core/models/vnc-editor.model';
             <span class="field-type-chip">{{ field.field_type }}</span>
           </div>
           <div class="field-actions">
-            @if (field.source === 'user') {
-              <mat-icon class="user-added" matTooltip="Added by user">person</mat-icon>
-            }
             @if (field.is_sensitive) {
               <mat-icon class="sensitive-icon">lock</mat-icon>
             }
@@ -111,7 +108,6 @@ import { EditorField } from '../../../core/models/vnc-editor.model';
       flex-shrink: 0;
     }
     .field-actions { display: flex; gap: 4px; align-items: center; }
-    .user-added { font-size: 16px; color: #4CAF50; }
     .sensitive-icon { font-size: 16px; color: #FF9800; }
     .empty-state {
       display: flex;

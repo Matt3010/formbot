@@ -67,13 +67,11 @@ export class VncEditorService {
     return this.api.post(`/analyses/${analysisId}/editing/step`, { step, url });
   }
 
-  executeLogin(analysisId: string, loginFields: any[], targetUrl: string, submitSelector: string, flags?: { captcha_detected?: boolean; two_factor_expected?: boolean; human_breakpoint?: boolean }): Observable<any> {
+  executeLogin(analysisId: string, loginFields: any[], targetUrl: string, submitSelector: string, flags?: { human_breakpoint?: boolean }): Observable<any> {
     return this.api.post(`/analyses/${analysisId}/editing/execute-login`, {
       login_fields: loginFields,
       target_url: targetUrl,
       submit_selector: submitSelector,
-      captcha_detected: flags?.captcha_detected ?? false,
-      two_factor_expected: flags?.two_factor_expected ?? false,
       human_breakpoint: flags?.human_breakpoint ?? false,
     });
   }

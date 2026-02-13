@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, OnDestroy, signal } from '@angular/core';
+import { Component, computed, inject, OnInit, OnDestroy, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
@@ -112,6 +112,10 @@ export class AnalysesComponent implements OnInit, OnDestroy {
   analyses = signal<Analysis[]>([]);
   loading = signal(true);
   statusFilter = signal('');
+
+  hasActiveAnalyses = computed(() =>
+    this.analyses().some(a => a.status === 'pending' || a.status === 'analyzing')
+  );
 
   ngOnInit() {
     this.loadAnalyses();

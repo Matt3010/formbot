@@ -32,9 +32,6 @@ class FormDefinition extends Model
         'form_type',
         'form_selector',
         'submit_selector',
-        'ai_confidence',
-        'captcha_detected',
-        'two_factor_expected',
         'human_breakpoint',
     ];
 
@@ -44,10 +41,7 @@ class FormDefinition extends Model
     protected function casts(): array
     {
         return [
-            'captcha_detected' => 'boolean',
-            'two_factor_expected' => 'boolean',
             'human_breakpoint' => 'boolean',
-            'ai_confidence' => 'decimal:2',
         ];
     }
 

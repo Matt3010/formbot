@@ -261,9 +261,6 @@ export class TaskWizardComponent implements OnInit {
       form_type: form.form_type || 'target',
       form_selector: form.form_selector || '',
       submit_selector: form.submit_selector || '',
-      ai_confidence: form.ai_confidence ?? null,
-      captcha_detected: form.captcha_detected ?? false,
-      two_factor_expected: form.two_factor_expected ?? false,
       human_breakpoint: form.human_breakpoint ?? false,
       fields: (form.fields || []).map((field: any, fIdx: number) => ({
         id: field.id || `temp-field-${idx}-${fIdx}`,
@@ -378,7 +375,7 @@ export class TaskWizardComponent implements OnInit {
 
   onFormsDetected(forms: FormDefinition[]) {
     this.detectedForms.set(forms);
-    // Auto-advance to VNC editor as soon as AI detects forms
+    // Auto-advance to VNC editor as soon as initial forms are available
     if (forms.length > 0 && !this.isEditing()) {
       setTimeout(() => this.proceedToVncEditor());
     }
@@ -483,9 +480,6 @@ export class TaskWizardComponent implements OnInit {
       form_type: f.form_type,
       form_selector: f.form_selector || null,
       submit_selector: f.submit_selector || null,
-      ai_confidence: f.ai_confidence,
-      captcha_detected: f.captcha_detected ?? false,
-      two_factor_expected: f.two_factor_expected ?? false,
       human_breakpoint: f.human_breakpoint ?? false,
       form_fields: (f.fields || []).map((field, idx) => ({
         field_name: field.field_name,

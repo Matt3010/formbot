@@ -167,7 +167,6 @@ export class VncFieldDetailComponent {
       preset_value: this.editValue,
       is_sensitive: this.editSensitive,
       is_required: this.editRequired,
-      status: f.source === 'ai' ? 'modified' : f.status,
     });
   }
 

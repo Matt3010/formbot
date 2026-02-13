@@ -1,8 +1,6 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
@@ -11,9 +9,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('form_definitions', function (Blueprint $table) {
-            $table->boolean('two_factor_expected')->default(false)->after('captcha_detected');
-        });
+        // Deprecated migration retained for compatibility.
     }
 
     /**
@@ -21,8 +17,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('form_definitions', function (Blueprint $table) {
-            $table->dropColumn('two_factor_expected');
-        });
+        // No-op.
     }
 };
