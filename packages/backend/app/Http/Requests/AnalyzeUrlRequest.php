@@ -21,7 +21,6 @@ class AnalyzeUrlRequest extends FormRequest
     {
         return [
             'url' => ['required', 'url'],
-            'model' => ['sometimes', 'string'],
         ];
     }
 }

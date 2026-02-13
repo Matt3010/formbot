@@ -1,4 +1,5 @@
 export type EditorMode = 'view' | 'select' | 'add' | 'remove';
+export type EditorPhase = 'login' | 'login-executing' | 'target';
 
 export interface EditorField {
   temp_id: string;
@@ -26,6 +27,7 @@ export interface EditingStep {
   ai_confidence: number | null;
   captcha_detected: boolean;
   two_factor_expected: boolean;
+  human_breakpoint: boolean;
   status: 'pending' | 'confirmed';
   fields: EditorField[];
 }
@@ -61,6 +63,8 @@ export interface FieldAddedEvent {
   name: string;
   value: string;
   purpose: string;
+  form_selector?: string;
+  submit_selector?: string;
 }
 
 export interface FieldRemovedEvent {
@@ -69,8 +73,30 @@ export interface FieldRemovedEvent {
   selector: string;
 }
 
+export interface FieldValueChangedEvent {
+  analysis_id: string;
+  index: number;
+  selector: string;
+  value: string;
+}
+
 export interface TestSelectorResult {
   status: string;
   found: boolean;
   matchCount: number;
+}
+
+export interface LoginExecutionProgressEvent {
+  analysis_id: string;
+  phase: string;       // 'filling' | 'captcha' | '2fa' | 'submitting' | 'navigating' | 'analyzing'
+  message: string;
+  needs_vnc?: boolean;
+}
+
+export interface LoginExecutionCompleteEvent {
+  analysis_id: string;
+  success: boolean;
+  error?: string;
+  target_result?: any;
+  target_fields?: any[];
 }

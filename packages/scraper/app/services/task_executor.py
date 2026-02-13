@@ -1,5 +1,4 @@
 import os
-import json
 import uuid
 import asyncio
 from datetime import datetime
@@ -14,11 +13,6 @@ from app.models.form_definition import FormDefinition
 from app.models.form_field import FormField
 from app.models.execution_log import ExecutionLog
 from cryptography.fernet import Fernet
-
-
-class _SessionExpiredError(Exception):
-    """Raised when reused session cookies have expired."""
-    pass
 
 
 class TaskExecutor:
@@ -158,7 +152,7 @@ class TaskExecutor:
             .order_by(FormDefinition.step_order)
             .all())
 
-        needs_vnc = any(fd.captcha_detected or fd.two_factor_expected for fd in form_defs)
+        needs_vnc = any(fd.captcha_detected or fd.two_factor_expected or fd.human_breakpoint for fd in form_defs)
 
         # For VNC: reserve a display (starts only Xvfb) so Playwright can render.
         # x11vnc + websockify are started later only when a pause is actually needed.
@@ -193,36 +187,7 @@ class TaskExecutor:
 
                 page = await context.new_page()
 
-                # Session reuse: if login not required every time and session data exists
-                skip_login = False
-                if task.requires_login and not task.login_every_time and task.login_session_data:
-                    try:
-                        cookies = json.loads(task.login_session_data)
-                        if isinstance(cookies, list) and len(cookies) > 0:
-                            await context.add_cookies(cookies)
-                            skip_login = True
-                            self._broadcast("execution.step_started", {
-                                "task_id": str(task.id),
-                                "step": 0,
-                                "total_steps": len(form_defs),
-                                "page_url": "session_reuse",
-                                "form_type": "login",
-                            })
-                    except Exception:
-                        skip_login = False
-
                 for i, form_def in enumerate(form_defs):
-                    # Skip login step if reusing session cookies
-                    if skip_login and form_def.step_order == 0 and form_def.form_type == 'login':
-                        steps_log.append({
-                            "step": form_def.step_order,
-                            "page_url": form_def.page_url,
-                            "form_type": form_def.form_type,
-                            "status": "skipped_session_reuse",
-                            "timestamp": datetime.utcnow().isoformat()
-                        })
-                        continue
-
                     step_info = {
                         "step": form_def.step_order,
                         "page_url": form_def.page_url,
@@ -246,24 +211,15 @@ class TaskExecutor:
 
                     step_info["navigated"] = True
 
-                    # Wait for form
-                    try:
-                        await page.wait_for_selector(form_def.form_selector, timeout=10000)
-                    except Exception:
-                        # Fallback: if we skipped login and form not found, session may be expired
-                        if skip_login and form_def.form_type != 'login':
-                            skip_login = False
-                            task.login_session_data = None
-                            self.db.commit()
-                            # Re-run from login step by breaking and re-entering the loop
-                            step_info["status"] = "session_expired_retry"
+                    # Wait for form (if form_selector is specified)
+                    if form_def.form_selector:
+                        try:
+                            await page.wait_for_selector(form_def.form_selector, timeout=10000)
+                        except Exception:
+                            step_info["status"] = "form_not_found"
+                            step_info["error"] = f"Form selector '{form_def.form_selector}' not found"
                             steps_log.append(step_info)
-                            # Navigate back - we need to restart from login
-                            raise _SessionExpiredError("Session expired, retrying with full login")
-                        step_info["status"] = "form_not_found"
-                        step_info["error"] = f"Form selector '{form_def.form_selector}' not found"
-                        steps_log.append(step_info)
-                        raise Exception(step_info["error"])
+                            raise Exception(step_info["error"])
 
                     # Pre-submit VNC pause: CAPTCHA (user solves captcha before fields are filled)
                     if form_def.captcha_detected:
@@ -332,6 +288,18 @@ class TaskExecutor:
                         except Exception as e:
                             step_info[f"field_{field.field_name}_error"] = str(e)
 
+                    # Human breakpoint: pause for manual review after filling
+                    if form_def.human_breakpoint:
+                        resumed = await self._vnc_pause(
+                            execution, steps_log, step_info, "breakpoint", browser
+                        )
+                        if not resumed:
+                            return {
+                                "execution_id": str(execution.id),
+                                "status": "failed",
+                                "error": "VNC timeout (breakpoint)"
+                            }
+
                     # Check if this is the last step and dry run
                     is_last_step = (i == len(form_defs) - 1)
 
@@ -371,15 +339,6 @@ class TaskExecutor:
                     except Exception as e:
                         step_info["status"] = "submit_error"
                         step_info["error"] = str(e)
-
-                    # Save session cookies after successful login step
-                    if form_def.form_type == 'login' and form_def.step_order == 0 and step_info["status"] == "submitted":
-                        try:
-                            cookies = await context.cookies()
-                            task.login_session_data = json.dumps(cookies)
-                            self.db.commit()
-                        except Exception:
-                            pass
 
                     # Only append if not already added by _vnc_pause
                     if not steps_log or steps_log[-1] is not step_info:
@@ -437,27 +396,6 @@ class TaskExecutor:
                 "status": "success",
                 "screenshot": screenshot_name
             }
-
-        except _SessionExpiredError:
-            # Session cookies expired - retry with full login
-            self._broadcast("execution.step_started", {
-                "task_id": str(task.id),
-                "step": 0,
-                "total_steps": len(form_defs),
-                "page_url": "session_expired_retry",
-                "form_type": "login",
-            })
-            # Re-execute without session reuse
-            task.login_session_data = None
-            self.db.commit()
-            return await self.execute(
-                task_id=task_id,
-                execution_id=str(execution.id),
-                is_dry_run=is_dry_run,
-                stealth_enabled=stealth_enabled,
-                user_agent=user_agent,
-                action_delay_ms=action_delay_ms,
-            )
 
         except Exception as e:
             # Update execution log - failed

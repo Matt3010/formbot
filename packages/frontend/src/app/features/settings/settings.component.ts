@@ -12,7 +12,6 @@ import { ApiService } from '../../core/services/api.service';
 import { NotificationService } from '../../core/services/notification.service';
 
 interface Settings {
-  ollama_model: string;
   max_parallel_browsers: number;
   retention_days: number;
   default_action_delay_ms: number;
@@ -44,22 +43,6 @@ interface Settings {
         </div>
       } @else {
         <div class="settings-grid">
-          <!-- AI Configuration -->
-          <mat-card>
-            <mat-card-header>
-              <mat-icon matCardAvatar>psychology</mat-icon>
-              <mat-card-title>AI Configuration</mat-card-title>
-              <mat-card-subtitle>Ollama model for form analysis</mat-card-subtitle>
-            </mat-card-header>
-            <mat-card-content>
-              <mat-form-field appearance="outline" class="full-width">
-                <mat-label>Ollama Model Name</mat-label>
-                <input matInput [(ngModel)]="settings.ollama_model" placeholder="llama3.2-vision">
-                <mat-hint>Model used for AI-powered form detection</mat-hint>
-              </mat-form-field>
-            </mat-card-content>
-          </mat-card>
-
           <!-- Browser Settings -->
           <mat-card>
             <mat-card-header>
@@ -137,7 +120,6 @@ export class SettingsComponent implements OnInit {
   saving = signal(false);
 
   settings: Settings = {
-    ollama_model: 'llama3.2-vision',
     max_parallel_browsers: 2,
     retention_days: 30,
     default_action_delay_ms: 500,

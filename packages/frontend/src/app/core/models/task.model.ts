@@ -16,7 +16,6 @@ export interface Task {
   cloned_from: string | null;
   requires_login: boolean;
   login_url: string | null;
-  login_every_time: boolean;
   form_definitions: FormDefinition[];
   created_at: string;
   updated_at: string;
@@ -33,6 +32,7 @@ export interface FormDefinition {
   ai_confidence: number | null;
   captcha_detected: boolean;
   two_factor_expected: boolean;
+  human_breakpoint: boolean;
   fields: FormField[];
   created_at: string;
   updated_at: string;
@@ -55,11 +55,12 @@ export interface FormDefinitionPayload {
   step_order: number;
   page_url: string;
   form_type: 'login' | 'intermediate' | 'target';
-  form_selector: string;
-  submit_selector: string;
+  form_selector: string | null;
+  submit_selector: string | null;
   ai_confidence: number | null;
   captcha_detected: boolean;
   two_factor_expected: boolean;
+  human_breakpoint: boolean;
   form_fields: FormFieldPayload[];
 }
 
@@ -78,7 +79,6 @@ export interface TaskPayload {
   max_parallel: number;
   requires_login: boolean;
   login_url: string | null;
-  login_every_time: boolean;
   form_definitions: FormDefinitionPayload[];
 }
 

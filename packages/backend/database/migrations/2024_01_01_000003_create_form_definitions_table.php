@@ -17,8 +17,8 @@ return new class extends Migration
             $table->integer('step_order');
             $table->text('page_url');
             $table->enum('form_type', ['login', 'intermediate', 'target']);
-            $table->text('form_selector');
-            $table->text('submit_selector');
+            $table->text('form_selector')->nullable();
+            $table->text('submit_selector')->nullable();
             $table->decimal('ai_confidence', 3, 2)->nullable();
             $table->boolean('captcha_detected')->default(false);
             $table->timestamps();

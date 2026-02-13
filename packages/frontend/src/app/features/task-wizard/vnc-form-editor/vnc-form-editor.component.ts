@@ -4,13 +4,15 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatDividerModule } from '@angular/material/divider';
+import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { Subscription, Subject, debounceTime } from 'rxjs';
 import { WebSocketService } from '../../../core/services/websocket.service';
 import { VncEditorService } from '../../../core/services/vnc-editor.service';
 import { FormDefinition } from '../../../core/models/task.model';
 import {
-  EditorMode, EditorField, EditingStep, UserCorrections,
+  EditorMode, EditorPhase, EditorField, EditingStep, UserCorrections,
   HighlightingReadyEvent, FieldSelectedEvent, FieldAddedEvent, FieldRemovedEvent,
+  FieldValueChangedEvent, LoginExecutionProgressEvent, LoginExecutionCompleteEvent,
 } from '../../../core/models/vnc-editor.model';
 import { VncModeToolbarComponent } from './vnc-mode-toolbar.component';
 import { VncFieldListComponent } from './vnc-field-list.component';
@@ -25,6 +27,7 @@ import { VncStepTabsComponent } from './vnc-step-tabs.component';
     MatIconModule,
     MatProgressSpinnerModule,
     MatDividerModule,
+    MatSlideToggleModule,
     VncModeToolbarComponent,
     VncFieldListComponent,
     VncFieldDetailComponent,
@@ -66,6 +69,31 @@ import { VncStepTabsComponent } from './vnc-step-tabs.component';
             (stepChanged)="onStepChanged($event)"
           />
 
+          <!-- Step flags -->
+          <div class="step-flags">
+            <mat-slide-toggle
+              [checked]="currentStepCaptcha()"
+              (change)="onCaptchaToggle($event.checked)"
+              color="accent">
+              <mat-icon class="bp-icon">smart_toy</mat-icon>
+              CAPTCHA expected
+            </mat-slide-toggle>
+            <mat-slide-toggle
+              [checked]="currentStep2fa()"
+              (change)="on2faToggle($event.checked)"
+              color="accent">
+              <mat-icon class="bp-icon">phonelink_lock</mat-icon>
+              2FA expected
+            </mat-slide-toggle>
+            <mat-slide-toggle
+              [checked]="currentStepBreakpoint()"
+              (change)="onBreakpointToggle($event.checked)"
+              color="warn">
+              <mat-icon class="bp-icon">flag</mat-icon>
+              Human breakpoint
+            </mat-slide-toggle>
+          </div>
+
           <!-- Field list -->
           <div class="field-list-section">
             <app-vnc-field-list
@@ -90,18 +118,37 @@ import { VncStepTabsComponent } from './vnc-step-tabs.component';
 
           <mat-divider></mat-divider>
 
-          <!-- Actions -->
+          <!-- Actions (phase-dependent) -->
           <div class="actions">
-            <button mat-raised-button color="primary" (click)="onConfirmAll()" [disabled]="confirming()">
-              @if (confirming()) {
+            @if (currentPhase() === 'login') {
+              <button mat-raised-button color="primary" (click)="onConfirmLoginAndProceed()" [disabled]="loginExecuting()">
+                <mat-icon>login</mat-icon> Confirm Login & Proceed
+              </button>
+              <button mat-stroked-button (click)="onCancel()">
+                <mat-icon>close</mat-icon> Cancel
+              </button>
+            } @else if (currentPhase() === 'login-executing') {
+              <div class="login-progress">
                 <mat-spinner diameter="18"></mat-spinner>
-              } @else {
-                <mat-icon>check</mat-icon> Confirm All
+                <span>{{ loginProgress() }}</span>
+              </div>
+              @if (captchaWaiting()) {
+                <button mat-raised-button color="accent" (click)="onResumeLogin()">
+                  <mat-icon>play_arrow</mat-icon> Resume
+                </button>
               }
-            </button>
-            <button mat-stroked-button (click)="onCancel()">
-              <mat-icon>close</mat-icon> Cancel
-            </button>
+            } @else {
+              <button mat-raised-button color="primary" (click)="onConfirmAll()" [disabled]="confirming()">
+                @if (confirming()) {
+                  <mat-spinner diameter="18"></mat-spinner>
+                } @else {
+                  <mat-icon>check</mat-icon> Confirm All
+                }
+              </button>
+              <button mat-stroked-button (click)="onCancel()">
+                <mat-icon>close</mat-icon> Cancel
+              </button>
+            }
           </div>
         </div>
       </div>
@@ -172,6 +219,12 @@ import { VncStepTabsComponent } from './vnc-step-tabs.component';
       background: white;
       border-top: 1px solid #e0e0e0;
     }
+    .login-progress {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #666;
+    }
     .error-state {
       display: flex;
       flex-direction: column;
@@ -179,6 +232,21 @@ import { VncStepTabsComponent } from './vnc-step-tabs.component';
       gap: 8px;
       padding: 48px;
       color: #F44336;
+    }
+    .step-flags {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: 6px 12px;
+      border-bottom: 1px solid #e0e0e0;
+      background: #fff8e1;
+    }
+    .bp-icon {
+      font-size: 16px;
+      height: 16px;
+      width: 16px;
+      vertical-align: middle;
+      margin-right: 4px;
     }
   `]
 })
@@ -188,7 +256,8 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
   analysisId = input.required<string>();
   analysisResult = input<any>(null);
   resumeCorrections = input<UserCorrections | null>(null);
-
+  requiresLogin = input<boolean>(false);
+  targetUrl = input<string | null>(null);
   confirmed = output<FormDefinition[]>();
   cancelled = output<void>();
 
@@ -197,6 +266,8 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
   private editorService = inject(VncEditorService);
   private subs: Subscription[] = [];
   private draftSave$ = new Subject<void>();
+  private fillField$ = new Subject<{ fieldIndex: number; value: string }>();
+  private _suppressValueSync = false;
 
   loading = signal(true);
   vncUrl = signal<string | null>(null);
@@ -207,15 +278,30 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
   selectedFieldIndex = signal(-1);
   confirming = signal(false);
 
+  // Multi-phase login state
+  currentPhase = signal<EditorPhase>('target');
+  loginExecuting = signal(false);
+  loginProgress = signal('');
+  captchaWaiting = signal(false);
+
   // Computed-like signals
   currentFields = signal<EditorField[]>([]);
   selectedField = signal<EditorField | null>(null);
+  currentStepBreakpoint = signal(false);
+  currentStepCaptcha = signal(false);
+  currentStep2fa = signal(false);
 
   private isDragging = false;
   private boundMouseMove = this.onDrag.bind(this);
   private boundMouseUp = this.stopDrag.bind(this);
+  private sessionExpired = false;
 
   ngOnInit() {
+    // Set initial phase based on login requirement
+    if (this.requiresLogin()) {
+      this.currentPhase.set('login');
+    }
+
     // Listen for HighlightingReady via WebSocket
     const channelName = `private-analysis.${this.analysisId()}`;
     if (!this.ws['pusher']) this.ws.connect();
@@ -231,15 +317,30 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
         this.initializeFromDraft(draft);
         // Update highlights in VNC with draft fields
         const activeFields = draft.steps[0]?.fields || [];
-        this.editorService.updateFields(this.analysisId(), activeFields).subscribe();
+        this.editorService.updateFields(this.analysisId(), activeFields).subscribe({
+          error: (err) => this.handleSessionError(err)
+        });
       } else {
         this.initializeFromResult(data.analysis_result, data.fields);
+      }
+
+      // Auto-set to 'add' mode on target phase so user can immediately start picking fields
+      if (this.currentPhase() === 'target') {
+        this.onModeChanged('add');
       }
     });
 
     channel.bind('FieldSelected', (data: FieldSelectedEvent) => {
       this.selectedFieldIndex.set(data.index);
       this.updateSelectedField();
+      // Read the current live value and sync into the panel
+      this.editorService.readFieldValue(this.analysisId(), data.index).subscribe({
+        next: (result) => {
+          if (result?.value != null) {
+            this.syncLiveValueToPanel(data.index, result.value);
+          }
+        },
+      });
     });
 
     channel.bind('FieldAdded', (data: FieldAddedEvent) => {
@@ -250,6 +351,28 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
       this.removeFieldByIndex(data.index);
     });
 
+    channel.bind('FieldValueChanged', (data: FieldValueChangedEvent) => {
+      if (this._suppressValueSync) return;
+      this.syncLiveValueToPanel(data.index, data.value);
+    });
+
+    // Login execution events
+    channel.bind('LoginExecutionProgress', (data: LoginExecutionProgressEvent) => {
+      this.loginProgress.set(data.message);
+      this.captchaWaiting.set(data.phase === 'captcha' || data.phase === '2fa' || data.phase === 'human_breakpoint');
+    });
+
+    channel.bind('LoginExecutionComplete', (data: LoginExecutionCompleteEvent) => {
+      this.loginExecuting.set(false);
+      this.captchaWaiting.set(false);
+      if (data.success) {
+        this.transitionToTargetPhase(data.target_result, data.target_fields || []);
+      } else {
+        this.loginProgress.set(`Login failed: ${data.error || 'Unknown error'}`);
+        this.currentPhase.set('login');
+      }
+    });
+
     this.subs.push(
       channel // keep reference for cleanup
     );
@@ -258,6 +381,17 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
     this.subs.push(
       this.draftSave$.pipe(debounceTime(2000)).subscribe(() => {
         this.saveDraft();
+      })
+    );
+
+    // Debounced panel→VNC field fill
+    this.subs.push(
+      this.fillField$.pipe(debounceTime(300)).subscribe(({ fieldIndex, value }) => {
+        this._suppressValueSync = true;
+        this.editorService.fillField(this.analysisId(), fieldIndex, value).subscribe({
+          complete: () => { setTimeout(() => this._suppressValueSync = false, 200); },
+          error: () => { this._suppressValueSync = false; },
+        });
       })
     );
   }
@@ -307,6 +441,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
       ai_confidence: form.confidence ?? form.ai_confidence ?? null,
       captcha_detected: form.captcha_detected ?? false,
       two_factor_expected: form.two_factor_expected ?? false,
+      human_breakpoint: form.human_breakpoint ?? false,
       status: 'pending' as const,
       fields: editorFields.filter((_: any, fi: number) => {
         // Assign fields to the first form for now (simple case)
@@ -325,6 +460,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
         ai_confidence: null,
         captcha_detected: false,
         two_factor_expected: false,
+        human_breakpoint: false,
         status: 'pending',
         fields: editorFields,
       });
@@ -345,6 +481,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
       ai_confidence: s.ai_confidence ?? null,
       captcha_detected: s.captcha_detected ?? false,
       two_factor_expected: s.two_factor_expected ?? false,
+      human_breakpoint: s.human_breakpoint ?? false,
       status: s.status || 'pending',
       fields: (s.fields || []).map((f: any, i: number) => ({
         temp_id: f.temp_id || crypto.randomUUID(),
@@ -373,7 +510,9 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
 
   onModeChanged(mode: EditorMode) {
     this.currentMode.set(mode);
-    this.editorService.setMode(this.analysisId(), mode).subscribe();
+    this.editorService.setMode(this.analysisId(), mode).subscribe({
+      error: (err) => this.handleSessionError(err)
+    });
   }
 
   // --- Field operations ---
@@ -389,13 +528,21 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
     const fieldIdx = this.selectedFieldIndex();
     const stepsClone = structuredClone(this.steps());
     if (stepsClone[stepIdx]?.fields[fieldIdx]) {
+      const previousValue = stepsClone[stepIdx].fields[fieldIdx].preset_value;
       stepsClone[stepIdx].fields[fieldIdx] = updatedField;
       this.steps.set(stepsClone);
       this.updateCurrentFields();
       this.draftSave$.next();
 
       // Update highlights in VNC
-      this.editorService.updateFields(this.analysisId(), stepsClone[stepIdx].fields).subscribe();
+      this.editorService.updateFields(this.analysisId(), stepsClone[stepIdx].fields).subscribe({
+        error: (err) => this.handleSessionError(err)
+      });
+
+      // If preset_value changed, push to live page (debounced)
+      if (updatedField.preset_value !== previousValue) {
+        this.fillField$.next({ fieldIndex: fieldIdx, value: updatedField.preset_value });
+      }
     }
   }
 
@@ -406,7 +553,9 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
     this.steps.set(stepsClone);
     this.updateCurrentFields();
     this.draftSave$.next();
-    this.editorService.updateFields(this.analysisId(), fields).subscribe();
+    this.editorService.updateFields(this.analysisId(), fields).subscribe({
+      error: (err) => this.handleSessionError(err)
+    });
   }
 
   onTestSelector(selector: string) {
@@ -442,6 +591,15 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
     const stepIdx = this.activeStepIndex();
     const stepsClone = structuredClone(this.steps());
     stepsClone[stepIdx].fields.push(newField);
+
+    // Auto-detect form_selector and submit_selector from the added field's parent form
+    if (data.form_selector && !stepsClone[stepIdx].form_selector) {
+      stepsClone[stepIdx].form_selector = data.form_selector;
+    }
+    if (data.submit_selector && !stepsClone[stepIdx].submit_selector) {
+      stepsClone[stepIdx].submit_selector = data.submit_selector;
+    }
+
     this.steps.set(stepsClone);
     this.updateCurrentFields();
     this.draftSave$.next();
@@ -471,7 +629,9 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
       }
 
       this.draftSave$.next();
-      this.editorService.updateFields(this.analysisId(), stepsClone[stepIdx].fields).subscribe();
+      this.editorService.updateFields(this.analysisId(), stepsClone[stepIdx].fields).subscribe({
+        error: (err) => this.handleSessionError(err)
+      });
     }
   }
 
@@ -482,11 +642,166 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
     this.selectedFieldIndex.set(-1);
     this.selectedField.set(null);
     this.updateCurrentFields();
+    this.currentStepBreakpoint.set(this.steps()[index]?.human_breakpoint ?? false);
 
     const step = this.steps()[index];
     if (step?.page_url) {
       this.editorService.navigateStep(this.analysisId(), index, step.page_url).subscribe();
     }
+  }
+
+  onCaptchaToggle(value: boolean) {
+    const stepIdx = this.activeStepIndex();
+    const stepsClone = structuredClone(this.steps());
+    if (stepsClone[stepIdx]) {
+      stepsClone[stepIdx].captcha_detected = value;
+      this.steps.set(stepsClone);
+      this.currentStepCaptcha.set(value);
+      this.draftSave$.next();
+    }
+  }
+
+  on2faToggle(value: boolean) {
+    const stepIdx = this.activeStepIndex();
+    const stepsClone = structuredClone(this.steps());
+    if (stepsClone[stepIdx]) {
+      stepsClone[stepIdx].two_factor_expected = value;
+      this.steps.set(stepsClone);
+      this.currentStep2fa.set(value);
+      this.draftSave$.next();
+    }
+  }
+
+  onBreakpointToggle(value: boolean) {
+    const stepIdx = this.activeStepIndex();
+    const stepsClone = structuredClone(this.steps());
+    if (stepsClone[stepIdx]) {
+      stepsClone[stepIdx].human_breakpoint = value;
+      this.steps.set(stepsClone);
+      this.currentStepBreakpoint.set(value);
+      this.draftSave$.next();
+    }
+  }
+
+  // --- Login phase ---
+
+  onConfirmLoginAndProceed() {
+    const step = this.steps()[this.activeStepIndex()];
+    if (!step) return;
+
+    // Collect login fields with their preset values
+    const loginFields = step.fields.map(f => ({
+      field_selector: f.field_selector,
+      value: f.preset_value || '',
+      field_type: f.field_type,
+      is_sensitive: f.is_sensitive,
+    }));
+
+    const targetUrl = this.targetUrl() || '';
+    const submitSelector = step.submit_selector || '';
+
+    // Transition to executing phase
+    this.currentPhase.set('login-executing');
+    this.loginExecuting.set(true);
+    this.loginProgress.set('Filling login form...');
+
+    // Call backend to execute login in the existing VNC session
+    this.editorService.executeLogin(this.analysisId(), loginFields, targetUrl, submitSelector, {
+      captcha_detected: step.captcha_detected,
+      two_factor_expected: step.two_factor_expected,
+      human_breakpoint: step.human_breakpoint,
+    }).subscribe({
+      error: (err) => {
+        this.loginExecuting.set(false);
+        this.loginProgress.set(`Failed: ${err.error?.message || 'Unknown error'}`);
+        this.currentPhase.set('login');
+      },
+    });
+  }
+
+  onResumeLogin() {
+    this.captchaWaiting.set(false);
+    this.loginProgress.set('Resuming after manual intervention...');
+    this.editorService.resumeLogin(this.analysisId()).subscribe({
+      error: () => {
+        this.loginProgress.set('Failed to resume. Try again.');
+        this.captchaWaiting.set(true);
+      },
+    });
+  }
+
+  private transitionToTargetPhase(targetResult: any, targetFields: any[]) {
+    // Mark login step as confirmed
+    const stepsClone = structuredClone(this.steps());
+    if (stepsClone.length > 0) {
+      stepsClone[0].status = 'confirmed';
+    }
+
+    // Build target editor fields
+    const editorFields: EditorField[] = targetFields.map((f: any, i: number) => ({
+      temp_id: crypto.randomUUID(),
+      field_name: f.field_name || f.name || '',
+      field_type: f.field_type || f.type || 'text',
+      field_selector: f.field_selector || f.selector || '',
+      field_purpose: f.field_purpose || f.purpose || 'other',
+      preset_value: f.preset_value || '',
+      is_sensitive: f.is_sensitive ?? false,
+      is_required: f.required ?? f.is_required ?? false,
+      is_file_upload: f.is_file_upload ?? false,
+      options: f.options || null,
+      sort_order: i,
+      status: 'ai' as const,
+      source: 'ai' as const,
+      original_selector: f.field_selector || f.selector || '',
+    }));
+
+    // Build target step(s) from result
+    const targetForms = targetResult?.forms || [];
+    const targetSteps: EditingStep[] = targetForms.length > 0
+      ? targetForms.map((form: any, i: number) => ({
+          step_order: stepsClone.length + i,
+          page_url: form.page_url || this.targetUrl() || '',
+          form_type: form.form_type || 'target',
+          form_selector: form.form_selector || '',
+          submit_selector: form.submit_selector || '',
+          ai_confidence: form.confidence ?? form.ai_confidence ?? null,
+          captcha_detected: form.captcha_detected ?? false,
+          two_factor_expected: form.two_factor_expected ?? false,
+          human_breakpoint: form.human_breakpoint ?? false,
+          status: 'pending' as const,
+          fields: editorFields,
+        }))
+      : [{
+          step_order: stepsClone.length,
+          page_url: this.targetUrl() || '',
+          form_type: 'target' as const,
+          form_selector: '',
+          submit_selector: '',
+          ai_confidence: null,
+          captcha_detected: false,
+          two_factor_expected: false,
+          human_breakpoint: false,
+          status: 'pending' as const,
+          fields: editorFields,
+        }];
+
+    // Append target steps after login
+    stepsClone.push(...targetSteps);
+    this.steps.set(stepsClone);
+
+    // Switch to first target step
+    const targetStepIndex = stepsClone.findIndex(s => s.form_type !== 'login');
+    this.activeStepIndex.set(targetStepIndex >= 0 ? targetStepIndex : stepsClone.length - 1);
+    this.updateCurrentFields();
+    this.selectedFieldIndex.set(-1);
+    this.selectedField.set(null);
+
+    // Switch phase
+    this.currentPhase.set('target');
+    this.loginProgress.set('');
+
+    // Auto-set to 'add' mode so user can immediately start picking fields
+    this.onModeChanged('add');
   }
 
   // --- Confirm / Cancel ---
@@ -525,15 +840,44 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
 
   // --- Helpers ---
 
+  private handleSessionError(err: any) {
+    if (err.status === 404 && !this.sessionExpired) {
+      this.sessionExpired = true;
+      alert('VNC session expired or lost. The editor will close.');
+      this.cancelled.emit();
+    }
+  }
+
   private updateCurrentFields() {
     const step = this.steps()[this.activeStepIndex()];
     this.currentFields.set(step?.fields || []);
+    this.currentStepBreakpoint.set(step?.human_breakpoint ?? false);
+    this.currentStepCaptcha.set(step?.captcha_detected ?? false);
+    this.currentStep2fa.set(step?.two_factor_expected ?? false);
   }
 
   private updateSelectedField() {
     const fields = this.currentFields();
     const idx = this.selectedFieldIndex();
     this.selectedField.set(idx >= 0 && idx < fields.length ? fields[idx] : null);
+  }
+
+  private syncLiveValueToPanel(fieldIndex: number, value: string) {
+    const stepIdx = this.activeStepIndex();
+    const stepsClone = structuredClone(this.steps());
+    const field = stepsClone[stepIdx]?.fields[fieldIndex];
+    if (!field || field.preset_value === value) return;
+
+    field.preset_value = value;
+    this.steps.set(stepsClone);
+    this.updateCurrentFields();
+
+    // Update selected field if it's the one that changed
+    if (this.selectedFieldIndex() === fieldIndex) {
+      this.updateSelectedField();
+    }
+
+    this.draftSave$.next();
   }
 
   private buildCorrections(): UserCorrections {
@@ -583,6 +927,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
       ai_confidence: step.ai_confidence,
       captcha_detected: step.captcha_detected,
       two_factor_expected: step.two_factor_expected,
+      human_breakpoint: step.human_breakpoint,
       fields: step.fields.map((f, fi) => ({
         id: f.temp_id,
         form_definition_id: `vnc-step-${i}`,

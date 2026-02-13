@@ -42,14 +42,15 @@ def highlighter(mock_page):
 
 @pytest.mark.asyncio
 async def test_setup_exposes_functions(highlighter, mock_page):
-    """setup() should call expose_function for the 3 callbacks."""
+    """setup() should call expose_function for the 4 callbacks."""
     await highlighter.setup(SAMPLE_FIELDS)
 
-    assert mock_page.expose_function.call_count == 3
+    assert mock_page.expose_function.call_count == 4
     exposed_names = [call.args[0] for call in mock_page.expose_function.call_args_list]
     assert "__formbot_onFieldSelected" in exposed_names
     assert "__formbot_onFieldAdded" in exposed_names
     assert "__formbot_onFieldRemoved" in exposed_names
+    assert "__formbot_onFieldValueChanged" in exposed_names
 
 
 @pytest.mark.asyncio
@@ -58,7 +59,7 @@ async def test_setup_only_exposes_once(highlighter, mock_page):
     await highlighter.setup(SAMPLE_FIELDS)
     await highlighter.setup(SAMPLE_FIELDS)
 
-    assert mock_page.expose_function.call_count == 3  # not 6
+    assert mock_page.expose_function.call_count == 4  # not 8
 
 
 @pytest.mark.asyncio
@@ -189,3 +190,47 @@ async def test_on_field_removed_broadcasts(highlighter):
         await highlighter._on_field_removed(json.dumps(data))
 
         mock_trigger.assert_called_once_with("test-analysis-123", "FieldRemoved", data)
+
+
+@pytest.mark.asyncio
+async def test_on_field_value_changed_broadcasts(highlighter):
+    """_on_field_value_changed should broadcast FieldValueChanged event."""
+    with patch.object(highlighter.broadcaster, "trigger_analysis") as mock_trigger:
+        data = {"index": 0, "selector": "#username", "value": "testuser"}
+        await highlighter._on_field_value_changed(json.dumps(data))
+
+        mock_trigger.assert_called_once_with("test-analysis-123", "FieldValueChanged", data)
+
+
+@pytest.mark.asyncio
+async def test_fill_field(highlighter, mock_page):
+    """fill_field() should evaluate command_fillField with index and value."""
+    await highlighter.fill_field(0, "hello")
+
+    call_arg = mock_page.evaluate.call_args[0][0]
+    assert "command_fillField" in call_arg
+    assert "0" in call_arg
+    assert '"hello"' in call_arg
+
+
+@pytest.mark.asyncio
+async def test_read_field_value(highlighter, mock_page):
+    """read_field_value() should evaluate command_readFieldValue and return result."""
+    mock_page.evaluate = AsyncMock(return_value="current_val")
+
+    result = await highlighter.read_field_value(1)
+
+    assert result == "current_val"
+    call_arg = mock_page.evaluate.call_args[0][0]
+    assert "command_readFieldValue" in call_arg
+    assert "1" in call_arg
+
+
+@pytest.mark.asyncio
+async def test_read_field_value_returns_empty_on_none(highlighter, mock_page):
+    """read_field_value() should return empty string if evaluate returns None."""
+    mock_page.evaluate = AsyncMock(return_value=None)
+
+    result = await highlighter.read_field_value(0)
+
+    assert result == ""

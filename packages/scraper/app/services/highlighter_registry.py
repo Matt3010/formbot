@@ -27,6 +27,8 @@ class HighlighterSession:
     confirmed_event: asyncio.Event = field(default_factory=asyncio.Event)
     cancelled_event: asyncio.Event = field(default_factory=asyncio.Event)
     fields: list = field(default_factory=list)
+    resume_event: asyncio.Event = field(default_factory=asyncio.Event)
+    executing: bool = False
 
 
 class HighlighterRegistry:

@@ -60,27 +60,12 @@ export class TaskService {
     return this.api.post('/analyze', { url });
   }
 
-  analyzeNextPage(url: string): Observable<any> {
-    return this.api.post('/analyze/next-page', { url });
-  }
-
-  analyzeLoginAndTarget(payload: {
-    login_url: string;
-    target_url: string;
-    login_form_selector: string;
-    login_submit_selector: string;
-    login_fields: { field_selector: string; value: string; field_type?: string; is_sensitive?: boolean }[];
-    needs_vnc?: boolean;
-  }): Observable<any> {
-    return this.api.post('/analyze/login-and-target', payload);
-  }
-
-  resumeAnalysisVnc(sessionId: string, analysisId: string): Observable<any> {
-    return this.api.post('/analyze/resume-vnc', { session_id: sessionId, analysis_id: analysisId });
-  }
-
   analyzeInteractive(analysisId: string): Observable<any> {
     return this.api.post(`/analyses/${analysisId}/editing/start`);
+  }
+
+  analyzeInteractiveWithUrl(analysisId: string, url: string): Observable<any> {
+    return this.api.post(`/analyses/${analysisId}/editing/start`, { url });
   }
 
   validateSelectors(taskId: string): Observable<any> {

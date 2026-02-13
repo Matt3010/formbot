@@ -27,11 +27,4 @@ app.include_router(editing.router, tags=["editing"])
 
 @app.get("/health")
 async def health_check():
-    from app.services.ollama_client import OllamaClient
-    ollama = OllamaClient()
-    ollama_ok = await ollama.is_available()
-
-    return {
-        "status": "ok",
-        "ollama": "connected" if ollama_ok else "unavailable"
-    }
+    return {"status": "ok"}

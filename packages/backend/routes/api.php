@@ -35,9 +35,6 @@ Route::middleware('auth:api')->group(function () {
 
     // Analyzer
     Route::post('/analyze', [AnalyzerController::class, 'analyze']);
-    Route::post('/analyze/next-page', [AnalyzerController::class, 'analyzeNextPage']);
-    Route::post('/analyze/login-and-target', [AnalyzerController::class, 'analyzeLoginAndTarget']);
-    Route::post('/analyze/resume-vnc', [AnalyzerController::class, 'resumeAnalysisVnc']);
     Route::post('/validate-selectors', [AnalyzerController::class, 'validateSelectors']);
 
     // Executions
@@ -70,6 +67,8 @@ Route::middleware('auth:api')->group(function () {
         Route::post('/confirm', [EditingController::class, 'confirm']);
         Route::post('/cancel', [EditingController::class, 'cancel']);
         Route::post('/step', [EditingController::class, 'step']);
+        Route::post('/execute-login', [EditingController::class, 'executeLogin']);
+        Route::post('/resume-login', [EditingController::class, 'resumeLogin']);
     });
 
     // Logs

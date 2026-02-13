@@ -3,7 +3,6 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     database_url: str = "postgresql://formbot:formbot@db:5432/formbot"
-    ollama_url: str = "http://ollama:11434"
     encryption_key: str = ""
     vnc_enabled: bool = True
     novnc_host: str = "novnc"

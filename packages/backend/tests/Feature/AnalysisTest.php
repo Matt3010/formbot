@@ -2,14 +2,12 @@
 
 namespace Tests\Feature;
 
-use App\Jobs\AnalyzeUrlJob;
 use App\Models\Analysis;
 use App\Models\Task;
 use App\Models\User;
 use App\Services\ScraperClient;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
-use Illuminate\Support\Facades\Queue;
 use Laravel\Passport\Passport;
 use Mockery;
 use Tests\TestCase;
@@ -42,9 +40,9 @@ class AnalysisTest extends TestCase
         return Analysis::create(array_merge([
             'user_id' => $this->user->id,
             'url' => 'https://example.com/form',
-            'type' => 'simple',
+            'type' => 'manual',
             'status' => 'completed',
-            'model' => 'llama3.1:8b',
+            'model' => null,
         ], $overrides));
     }
 
@@ -73,9 +71,9 @@ class AnalysisTest extends TestCase
         Analysis::create([
             'user_id' => $otherUser->id,
             'url' => 'https://other.com/form',
-            'type' => 'simple',
+            'type' => 'manual',
             'status' => 'completed',
-            'model' => 'llama3.1:8b',
+            'model' => null,
         ]);
 
         $response = $this->getJson('/api/analyses');
@@ -161,7 +159,7 @@ class AnalysisTest extends TestCase
         $response->assertStatus(200)
             ->assertJsonPath('data.id', $analysis->id)
             ->assertJsonPath('data.url', 'https://example.com/form')
-            ->assertJsonPath('data.type', 'simple')
+            ->assertJsonPath('data.type', 'manual')
             ->assertJsonPath('data.status', 'completed')
             ->assertJsonStructure([
                 'data' => [
@@ -191,9 +189,9 @@ class AnalysisTest extends TestCase
         $analysis = Analysis::create([
             'user_id' => $otherUser->id,
             'url' => 'https://other.com/form',
-            'type' => 'simple',
+            'type' => 'manual',
             'status' => 'completed',
-            'model' => 'llama3.1:8b',
+            'model' => null,
         ]);
 
         $response = $this->getJson("/api/analyses/{$analysis->id}");
@@ -274,9 +272,9 @@ class AnalysisTest extends TestCase
         $analysis = Analysis::create([
             'user_id' => $otherUser->id,
             'url' => 'https://other.com/form',
-            'type' => 'simple',
+            'type' => 'manual',
             'status' => 'pending',
-            'model' => 'llama3.1:8b',
+            'model' => null,
         ]);
 
         $response = $this->postJson("/api/analyses/{$analysis->id}/cancel");
@@ -366,9 +364,9 @@ class AnalysisTest extends TestCase
         $analysis = Analysis::create([
             'user_id' => $otherUser->id,
             'url' => 'https://other.com/form',
-            'type' => 'simple',
+            'type' => 'manual',
             'status' => 'completed',
-            'model' => 'llama3.1:8b',
+            'model' => null,
         ]);
 
         $response = $this->postJson("/api/analyses/{$analysis->id}/link-task", [
@@ -409,7 +407,7 @@ class AnalysisTest extends TestCase
         $analysis = $this->createAnalysis(['status' => 'analyzing']);
 
         $response = $this->postJson("/api/internal/analyses/{$analysis->id}/result", [
-            'error' => 'Ollama timed out',
+            'error' => 'Scraper timed out',
         ], [
             'X-Internal-Key' => 'formbot-internal',
         ]);
@@ -419,7 +417,7 @@ class AnalysisTest extends TestCase
 
         $analysis->refresh();
         $this->assertEquals('failed', $analysis->status);
-        $this->assertEquals('Ollama timed out', $analysis->error);
+        $this->assertEquals('Scraper timed out', $analysis->error);
         $this->assertNotNull($analysis->completed_at);
     }
 
@@ -542,45 +540,33 @@ class AnalysisTest extends TestCase
     }
 
     // -----------------------------------------------------------------
-    // POST /api/analyze — Analysis creation
+    // POST /api/analyze — Analysis creation (always manual)
     // -----------------------------------------------------------------
 
-    public function test_analyze_creates_analysis_record_in_database(): void
+    public function test_analyze_creates_manual_analysis(): void
     {
-        Queue::fake();
-
         $response = $this->postJson('/api/analyze', [
-            'url' => 'https://example.com/contact',
+            'url' => 'https://example.com/form',
         ]);
 
         $response->assertStatus(200)
             ->assertJsonStructure(['analysis_id', 'message']);
 
         $analysisId = $response->json('analysis_id');
-        $this->assertNotEmpty($analysisId);
 
         $this->assertDatabaseHas('analyses', [
             'id' => $analysisId,
             'user_id' => $this->user->id,
-            'url' => 'https://example.com/contact',
-            'type' => 'simple',
-            'status' => 'pending',
-        ]);
-    }
-
-    public function test_analyze_dispatches_job(): void
-    {
-        Queue::fake();
-
-        $response = $this->postJson('/api/analyze', [
-            'url' => 'https://example.com/contact',
+            'url' => 'https://example.com/form',
+            'type' => 'manual',
+            'status' => 'editing',
         ]);
 
-        $response->assertStatus(200);
-
-        Queue::assertPushed(AnalyzeUrlJob::class, function ($job) {
-            return $job->url === 'https://example.com/contact';
-        });
+        // Verify the result contains empty forms
+        $analysis = Analysis::find($analysisId);
+        $this->assertNotNull($analysis->result);
+        $this->assertCount(1, $analysis->result['forms']);
+        $this->assertEmpty($analysis->result['forms'][0]['fields']);
     }
 
     public function test_analyze_validates_url_required(): void
@@ -599,24 +585,5 @@ class AnalysisTest extends TestCase
 
         $response->assertStatus(422)
             ->assertJsonValidationErrors(['url']);
-    }
-
-    public function test_analyze_stores_custom_model(): void
-    {
-        Queue::fake();
-
-        $response = $this->postJson('/api/analyze', [
-            'url' => 'https://example.com/form',
-            'model' => 'mistral:7b',
-        ]);
-
-        $response->assertStatus(200);
-
-        $analysisId = $response->json('analysis_id');
-
-        $this->assertDatabaseHas('analyses', [
-            'id' => $analysisId,
-            'model' => 'mistral:7b',
-        ]);
     }
 }

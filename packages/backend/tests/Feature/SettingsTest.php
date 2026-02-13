@@ -41,14 +41,14 @@ class SettingsTest extends TestCase
 
     public function test_get_all_settings_returns_key_value_pairs(): void
     {
-        AppSetting::set('ollama_model', 'llama3.1:8b');
+        AppSetting::set('max_parallel_global', '5');
         AppSetting::set('retention_days', '30');
         AppSetting::set('default_delay', '500');
 
         $response = $this->getJson('/api/settings');
 
         $response->assertStatus(200)
-            ->assertJsonPath('ollama_model', 'llama3.1:8b')
+            ->assertJsonPath('max_parallel_global', '5')
             ->assertJsonPath('retention_days', '30')
             ->assertJsonPath('default_delay', '500');
     }
@@ -61,39 +61,39 @@ class SettingsTest extends TestCase
     {
         $response = $this->putJson('/api/settings', [
             'settings' => [
-                ['key' => 'ollama_model', 'value' => 'codellama:13b'],
+                ['key' => 'max_parallel_global', 'value' => '10'],
                 ['key' => 'retention_days', 'value' => '60'],
             ],
         ]);
 
         $response->assertStatus(200)
-            ->assertJsonPath('ollama_model', 'codellama:13b')
+            ->assertJsonPath('max_parallel_global', '10')
             ->assertJsonPath('retention_days', '60');
 
         // Verify database persistence
-        $this->assertEquals('codellama:13b', AppSetting::get('ollama_model'));
+        $this->assertEquals('10', AppSetting::get('max_parallel_global'));
         $this->assertEquals('60', AppSetting::get('retention_days'));
     }
 
     public function test_update_settings_overwrites_existing_values(): void
     {
-        AppSetting::set('ollama_model', 'llama3.1:8b');
+        AppSetting::set('retention_days', '30');
 
         $response = $this->putJson('/api/settings', [
             'settings' => [
-                ['key' => 'ollama_model', 'value' => 'mistral:7b'],
+                ['key' => 'retention_days', 'value' => '90'],
             ],
         ]);
 
         $response->assertStatus(200)
-            ->assertJsonPath('ollama_model', 'mistral:7b');
+            ->assertJsonPath('retention_days', '90');
 
-        $this->assertEquals('mistral:7b', AppSetting::get('ollama_model'));
+        $this->assertEquals('90', AppSetting::get('retention_days'));
     }
 
     public function test_update_settings_preserves_unmodified_settings(): void
     {
-        AppSetting::set('ollama_model', 'llama3.1:8b');
+        AppSetting::set('max_parallel_global', '5');
         AppSetting::set('retention_days', '30');
 
         // Only update one setting
@@ -106,7 +106,7 @@ class SettingsTest extends TestCase
         $response->assertStatus(200);
 
         // The untouched setting should still be there
-        $this->assertEquals('llama3.1:8b', AppSetting::get('ollama_model'));
+        $this->assertEquals('5', AppSetting::get('max_parallel_global'));
         $this->assertEquals('90', AppSetting::get('retention_days'));
     }
 

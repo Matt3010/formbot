@@ -43,6 +43,9 @@ class FieldHighlighter:
             await self.page.expose_function(
                 "__formbot_onFieldRemoved", self._on_field_removed
             )
+            await self.page.expose_function(
+                "__formbot_onFieldValueChanged", self._on_field_value_changed
+            )
             self._exposed = True
 
         # Auto re-inject on navigation
@@ -109,6 +112,19 @@ class FieldHighlighter:
         )
         return result or {"found": False, "matchCount": 0}
 
+    async def fill_field(self, field_index: int, value: str) -> None:
+        """Programmatically fill a field's value in the live page."""
+        await self.page.evaluate(
+            f"window.__FORMBOT_HIGHLIGHT.command_fillField({field_index}, {json.dumps(value)})"
+        )
+
+    async def read_field_value(self, field_index: int) -> str:
+        """Read the current value of a field from the live page."""
+        result = await self.page.evaluate(
+            f"window.__FORMBOT_HIGHLIGHT.command_readFieldValue({field_index})"
+        )
+        return result or ""
+
     # ----- Callbacks: browser → Python via exposeFunction → Pusher -----
 
     async def _on_field_selected(self, data_json: str) -> None:
@@ -125,6 +141,11 @@ class FieldHighlighter:
         """Called when user clicks a field in 'remove' mode."""
         data = json.loads(data_json)
         self.broadcaster.trigger_analysis(self.analysis_id, "FieldRemoved", data)
+
+    async def _on_field_value_changed(self, data_json: str) -> None:
+        """Called when user types in a tracked field on the live page."""
+        data = json.loads(data_json)
+        self.broadcaster.trigger_analysis(self.analysis_id, "FieldValueChanged", data)
 
     # ----- Re-injection on navigation -----
 

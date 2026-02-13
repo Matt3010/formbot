@@ -7,6 +7,8 @@ import {
   FieldSelectedEvent,
   FieldAddedEvent,
   FieldRemovedEvent,
+  LoginExecutionProgressEvent,
+  LoginExecutionCompleteEvent,
 } from '../models/vnc-editor.model';
 
 export interface ExecutionProgress {
@@ -35,20 +37,6 @@ export interface WaitingManualEvent {
   ws_port?: number;
 }
 
-export interface AiThinkingEvent {
-  analysis_id: string;
-  token: string;
-  done: boolean;
-}
-
-export interface AnalysisVncEvent {
-  analysis_id: string;
-  vnc_session_id: string;
-  vnc_url: string;
-  ws_port?: number;
-  reason: string;
-}
-
 @Injectable({ providedIn: 'root' })
 export class WebSocketService {
   private auth = inject(AuthService);
@@ -63,12 +51,12 @@ export class WebSocketService {
   executionWaitingManual$ = new Subject<WaitingManualEvent>();
   captchaDetected$ = new Subject<any>();
   analysisCompleted$ = new Subject<any>();
-  aiThinking$ = new Subject<AiThinkingEvent>();
-  analysisVncRequired$ = new Subject<AnalysisVncEvent>();
   highlightingReady$ = new Subject<HighlightingReadyEvent>();
   vncFieldSelected$ = new Subject<FieldSelectedEvent>();
   vncFieldAdded$ = new Subject<FieldAddedEvent>();
   vncFieldRemoved$ = new Subject<FieldRemovedEvent>();
+  loginExecutionProgress$ = new Subject<LoginExecutionProgressEvent>();
+  loginExecutionComplete$ = new Subject<LoginExecutionCompleteEvent>();
   connected = signal(false);
   connectionState = signal<string>('disconnected');
 
@@ -234,10 +222,9 @@ export class WebSocketService {
   }
 
   /**
-   * Subscribe to AI thinking tokens for a specific analysis.
-   * Returns an Observable that emits AiThinkingEvent objects.
+   * Subscribe to analysis events (highlighting, field selection, login progress).
    */
-  subscribeToAnalysis(analysisId: string): Observable<AiThinkingEvent> {
+  subscribeToAnalysis(analysisId: string): Observable<any> {
     return new Observable(subscriber => {
       if (!this.pusher) {
         this.connect();
@@ -249,18 +236,6 @@ export class WebSocketService {
         channel = this.pusher.subscribe(channelName);
         this.subscribedChannels.set(channelName, channel);
       }
-
-      channel.bind('AiThinking', (data: AiThinkingEvent) => this.zone.run(() => {
-        this.aiThinking$.next(data);
-        subscriber.next(data);
-        if (data.done) {
-          subscriber.complete();
-        }
-      }));
-
-      channel.bind('AnalysisVncRequired', (data: AnalysisVncEvent) => this.zone.run(() => {
-        this.analysisVncRequired$.next(data);
-      }));
 
       channel.bind('HighlightingReady', (data: HighlightingReadyEvent) => this.zone.run(() => {
         this.highlightingReady$.next(data);
@@ -278,14 +253,22 @@ export class WebSocketService {
         this.vncFieldRemoved$.next(data);
       }));
 
+      channel.bind('LoginExecutionProgress', (data: LoginExecutionProgressEvent) => this.zone.run(() => {
+        this.loginExecutionProgress$.next(data);
+      }));
+
+      channel.bind('LoginExecutionComplete', (data: LoginExecutionCompleteEvent) => this.zone.run(() => {
+        this.loginExecutionComplete$.next(data);
+      }));
+
       return () => {
         try {
-          channel?.unbind('AiThinking');
-          channel?.unbind('AnalysisVncRequired');
           channel?.unbind('HighlightingReady');
           channel?.unbind('FieldSelected');
           channel?.unbind('FieldAdded');
           channel?.unbind('FieldRemoved');
+          channel?.unbind('LoginExecutionProgress');
+          channel?.unbind('LoginExecutionComplete');
         } catch {}
       };
     });

@@ -154,7 +154,6 @@ services:
       - "6080:6080"  # Single websockify port with token-based routing
     environment:
       - DATABASE_URL=postgresql://formbot:${DB_PASSWORD}@db:5432/formbot
-      - OLLAMA_URL=http://ollama:11434
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
       - VNC_ENABLED=true
       - PUSHER_APP_ID=${PUSHER_APP_ID:-100001}
@@ -165,8 +164,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      ollama:
-        condition: service_started
     volumes:
       - screenshots:/app/screenshots
       - uploads:/app/uploads
@@ -207,24 +204,6 @@ services:
     networks:
       - formbot
 
-  # ---- Ollama ----
-  ollama:
-    image: ollama/ollama:latest
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_models:/root/.ollama
-    # Uncomment for GPU support:
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: all
-    #           capabilities: [gpu]
-    networks:
-      - formbot
-
   # ---- Test Site (dev only) ----
   test-site:
     build:
@@ -240,7 +219,6 @@ services:
 volumes:
   pgdata:
   redis_data:
-  ollama_models:
   screenshots:
   uploads:
   passport_keys:

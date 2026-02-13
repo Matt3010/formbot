@@ -9,9 +9,11 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // Add 'editing' to the status enum
-        DB::statement("ALTER TABLE analyses DROP CONSTRAINT IF EXISTS analyses_status_check");
-        DB::statement("ALTER TABLE analyses ADD CONSTRAINT analyses_status_check CHECK (status::text = ANY (ARRAY['pending'::text, 'analyzing'::text, 'completed'::text, 'failed'::text, 'cancelled'::text, 'timed_out'::text, 'editing'::text]))");
+        // Add 'editing' to the status enum (PostgreSQL-only constraint, skip for SQLite)
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::statement("ALTER TABLE analyses DROP CONSTRAINT IF EXISTS analyses_status_check");
+            DB::statement("ALTER TABLE analyses ADD CONSTRAINT analyses_status_check CHECK (status::text = ANY (ARRAY['pending'::text, 'analyzing'::text, 'completed'::text, 'failed'::text, 'cancelled'::text, 'timed_out'::text, 'editing'::text]))");
+        }
 
         Schema::table('analyses', function (Blueprint $table) {
             $table->string('vnc_session_id', 255)->nullable()->after('task_id');
@@ -36,8 +38,10 @@ return new class extends Migration
             ]);
         });
 
-        // Revert status enum
-        DB::statement("ALTER TABLE analyses DROP CONSTRAINT IF EXISTS analyses_status_check");
-        DB::statement("ALTER TABLE analyses ADD CONSTRAINT analyses_status_check CHECK (status::text = ANY (ARRAY['pending'::text, 'analyzing'::text, 'completed'::text, 'failed'::text, 'cancelled'::text, 'timed_out'::text]))");
+        // Revert status enum (PostgreSQL-only)
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::statement("ALTER TABLE analyses DROP CONSTRAINT IF EXISTS analyses_status_check");
+            DB::statement("ALTER TABLE analyses ADD CONSTRAINT analyses_status_check CHECK (status::text = ANY (ARRAY['pending'::text, 'analyzing'::text, 'completed'::text, 'failed'::text, 'cancelled'::text, 'timed_out'::text]))");
+        }
     }
 };

@@ -8,6 +8,4 @@ return [
 
     'max_parallel_global' => env('FORMBOT_MAX_PARALLEL', 5),
 
-    'default_ollama_model' => env('OLLAMA_MODEL', 'llama3.1:8b'),
-
 ];

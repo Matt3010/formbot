@@ -1,9 +1,8 @@
 """Shared fixtures for FormBot scraper tests."""
 
-import copy
 import uuid
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -71,148 +70,6 @@ NO_FORMS_HTML = """
 </body>
 </html>
 """
-
-
-# ---------------------------------------------------------------------------
-# Ollama analysis result fixtures (what the LLM would return)
-# ---------------------------------------------------------------------------
-
-SIMPLE_LOGIN_ANALYSIS = {
-    "forms": [
-        {
-            "form_selector": "#login-form",
-            "form_type": "login",
-            "confidence": 0.95,
-            "submit_selector": "#submit-btn",
-            "captcha_detected": False,
-            "captcha_type": "none",
-            "fields": [
-                {
-                    "field_selector": "#username",
-                    "field_name": "username",
-                    "field_type": "text",
-                    "field_purpose": "username",
-                    "required": True,
-                    "options": [],
-                },
-                {
-                    "field_selector": "#password",
-                    "field_name": "password",
-                    "field_type": "password",
-                    "field_purpose": "password",
-                    "required": True,
-                    "options": [],
-                },
-            ],
-        }
-    ],
-    "page_requires_login": True,
-    "two_factor_detected": False,
-    "suggested_flow": "Fill username and password then submit.",
-}
-
-MULTI_FORM_ANALYSIS = {
-    "forms": [
-        {
-            "form_selector": "#search-form",
-            "form_type": "search",
-            "confidence": 0.90,
-            "submit_selector": "#search-form button[type='submit']",
-            "captcha_detected": False,
-            "captcha_type": "none",
-            "fields": [
-                {
-                    "field_selector": "#q",
-                    "field_name": "q",
-                    "field_type": "text",
-                    "field_purpose": "search_query",
-                    "required": False,
-                    "options": [],
-                }
-            ],
-        },
-        {
-            "form_selector": "#newsletter-form",
-            "form_type": "other",
-            "confidence": 0.85,
-            "submit_selector": "#newsletter-form button[type='submit']",
-            "captcha_detected": False,
-            "captcha_type": "none",
-            "fields": [
-                {
-                    "field_selector": "#email",
-                    "field_name": "email",
-                    "field_type": "email",
-                    "field_purpose": "email",
-                    "required": True,
-                    "options": [],
-                }
-            ],
-        },
-    ],
-    "page_requires_login": False,
-    "two_factor_detected": False,
-    "suggested_flow": "Search or subscribe to newsletter.",
-}
-
-CAPTCHA_ANALYSIS = {
-    "forms": [
-        {
-            "form_selector": "#captcha-form",
-            "form_type": "contact",
-            "confidence": 0.88,
-            "submit_selector": "#captcha-form button[type='submit']",
-            "captcha_detected": True,
-            "captcha_type": "recaptcha_v2",
-            "fields": [
-                {
-                    "field_selector": "#name",
-                    "field_name": "name",
-                    "field_type": "text",
-                    "field_purpose": "other",
-                    "required": False,
-                    "options": [],
-                }
-            ],
-        }
-    ],
-    "page_requires_login": False,
-    "two_factor_detected": False,
-    "suggested_flow": "Fill name, solve CAPTCHA, then submit.",
-}
-
-TWO_FACTOR_ANALYSIS = {
-    "forms": [
-        {
-            "form_selector": "#otp-form",
-            "form_type": "other",
-            "confidence": 0.92,
-            "submit_selector": "#otp-form button[type='submit']",
-            "captcha_detected": False,
-            "captcha_type": "none",
-            "fields": [
-                {
-                    "field_selector": "#otp",
-                    "field_name": "otp",
-                    "field_type": "text",
-                    "field_purpose": "other",
-                    "required": True,
-                    "options": [],
-                }
-            ],
-        }
-    ],
-    "page_requires_login": False,
-    "two_factor_detected": True,
-    "suggested_flow": "Enter OTP code and verify.",
-}
-
-NO_FORMS_ANALYSIS = {
-    "forms": [],
-    "page_requires_login": False,
-    "two_factor_detected": False,
-    "suggested_flow": "",
-}
 
 
 # ---------------------------------------------------------------------------
@@ -309,20 +166,6 @@ def mock_playwright(mock_browser):
 
 
 # ---------------------------------------------------------------------------
-# Mock Ollama client
-# ---------------------------------------------------------------------------
-
-@pytest.fixture
-def mock_ollama():
-    """Return a mock OllamaClient whose parse_json_response is pre-configured."""
-    client = AsyncMock()
-    client.generate = AsyncMock(return_value='{"forms": []}')
-    client.parse_json_response = AsyncMock(return_value=copy.deepcopy(SIMPLE_LOGIN_ANALYSIS))
-    client.is_available = AsyncMock(return_value=True)
-    return client
-
-
-# ---------------------------------------------------------------------------
 # Mock database session
 # ---------------------------------------------------------------------------
 
@@ -384,6 +227,7 @@ def make_form_definition(**overrides):
         "ai_confidence": 0.95,
         "captcha_detected": False,
         "two_factor_expected": False,
+        "human_breakpoint": False,
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow(),
     }

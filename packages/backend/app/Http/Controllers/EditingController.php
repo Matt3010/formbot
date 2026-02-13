@@ -18,7 +18,7 @@ class EditingController extends Controller
     /**
      * Start a VNC editing session for an analysis.
      */
-    public function start(Analysis $analysis, ScraperClient $scraperClient): JsonResponse
+    public function start(Analysis $analysis, Request $request, ScraperClient $scraperClient): JsonResponse
     {
         $this->authorizeAnalysis($analysis);
 
@@ -38,9 +38,12 @@ class EditingController extends Controller
             }
         }
 
+        // Allow URL override (e.g., login URL instead of target URL)
+        $url = $request->input('url', $analysis->url);
+
         try {
             $result = $scraperClient->startInteractiveAnalysis(
-                url: $analysis->url,
+                url: $url,
                 analysisId: $analysis->id,
                 analysisResult: $analysis->result,
             );
@@ -190,6 +193,7 @@ class EditingController extends Controller
                 'ai_confidence' => $step['ai_confidence'] ?? null,
                 'captcha_detected' => $step['captcha_detected'] ?? false,
                 'two_factor_expected' => $step['two_factor_expected'] ?? false,
+                'human_breakpoint' => $step['human_breakpoint'] ?? false,
             ]);
 
             foreach ($step['fields'] ?? [] as $field) {
@@ -239,6 +243,58 @@ class EditingController extends Controller
             'task_id' => $task->id,
             'task' => $task,
         ]);
+    }
+
+    /**
+     * Execute login in the existing VNC session, then navigate to target and analyze.
+     */
+    public function executeLogin(Analysis $analysis, Request $request, ScraperClient $scraperClient): JsonResponse
+    {
+        $this->authorizeAnalysis($analysis);
+
+        $request->validate([
+            'login_fields' => ['required', 'array'],
+            'target_url' => ['required', 'string'],
+            'submit_selector' => ['sometimes', 'string'],
+            'captcha_detected' => ['sometimes', 'boolean'],
+            'two_factor_expected' => ['sometimes', 'boolean'],
+            'human_breakpoint' => ['sometimes', 'boolean'],
+        ]);
+
+        try {
+            $result = $scraperClient->executeLoginInSession(
+                analysisId: $analysis->id,
+                loginFields: $request->input('login_fields'),
+                targetUrl: $request->input('target_url'),
+                submitSelector: $request->input('submit_selector', ''),
+                captchaDetected: $request->boolean('captcha_detected', false),
+                twoFactorExpected: $request->boolean('two_factor_expected', false),
+                humanBreakpoint: $request->boolean('human_breakpoint', false),
+            );
+
+            return response()->json($result);
+        } catch (\Exception $e) {
+            Log::error('Failed to execute login in session', [
+                'analysis_id' => $analysis->id,
+                'error' => $e->getMessage(),
+            ]);
+            return response()->json(['message' => 'Login execution failed: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Resume login execution after manual CAPTCHA/2FA intervention.
+     */
+    public function resumeLogin(Analysis $analysis, ScraperClient $scraperClient): JsonResponse
+    {
+        $this->authorizeAnalysis($analysis);
+
+        try {
+            $result = $scraperClient->resumeLoginInSession($analysis->id);
+            return response()->json($result);
+        } catch (\Exception $e) {
+            return response()->json(['message' => 'Resume failed: ' . $e->getMessage()], 500);
+        }
     }
 
     /**

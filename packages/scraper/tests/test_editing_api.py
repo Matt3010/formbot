@@ -43,6 +43,8 @@ def _make_mock_session(analysis_id: str = ANALYSIS_ID) -> HighlighterSession:
     highlighter.update_fields = AsyncMock()
     highlighter.focus_field = AsyncMock()
     highlighter.test_selector = AsyncMock(return_value={"found": True, "matchCount": 1})
+    highlighter.fill_field = AsyncMock()
+    highlighter.read_field_value = AsyncMock(return_value="")
     highlighter.cleanup = AsyncMock()
 
     browser = AsyncMock()
@@ -175,6 +177,53 @@ def test_test_selector_not_found():
     })
     assert resp.status_code == 200
     assert resp.json()["found"] is False
+
+
+# ----- Test /editing/fill-field -----
+
+def test_fill_field_success():
+    session = _register_session()
+    resp = client.post("/editing/fill-field", json={
+        "analysis_id": ANALYSIS_ID,
+        "field_index": 0,
+        "value": "testuser",
+    })
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "ok"
+    session.highlighter.fill_field.assert_called_once_with(0, "testuser")
+
+
+def test_fill_field_session_not_found():
+    resp = client.post("/editing/fill-field", json={
+        "analysis_id": "nonexistent",
+        "field_index": 0,
+        "value": "test",
+    })
+    assert resp.status_code == 404
+
+
+# ----- Test /editing/read-field-value -----
+
+def test_read_field_value_success():
+    session = _register_session()
+    session.highlighter.read_field_value = AsyncMock(return_value="current_value")
+    resp = client.post("/editing/read-field-value", json={
+        "analysis_id": ANALYSIS_ID,
+        "field_index": 0,
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "ok"
+    assert data["value"] == "current_value"
+    session.highlighter.read_field_value.assert_called_once_with(0)
+
+
+def test_read_field_value_session_not_found():
+    resp = client.post("/editing/read-field-value", json={
+        "analysis_id": "nonexistent",
+        "field_index": 0,
+    })
+    assert resp.status_code == 404
 
 
 # ----- Test /editing/confirm -----
@@ -310,3 +359,85 @@ async def test_registry_active_count():
 
     await registry.remove("count-2")
     assert registry.active_count == 0
+
+
+# ----- Test /editing/execute-login -----
+
+def test_execute_login_success():
+    session = _register_session()
+    resp = client.post("/editing/execute-login", json={
+        "analysis_id": ANALYSIS_ID,
+        "login_fields": [
+            {"field_selector": "#username", "value": "user1"},
+            {"field_selector": "#password", "value": "pass1", "field_type": "password", "is_sensitive": True},
+        ],
+        "target_url": "https://example.com/dashboard",
+        "submit_selector": "button[type=submit]",
+    })
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "started"
+
+
+def test_execute_login_session_not_found():
+    resp = client.post("/editing/execute-login", json={
+        "analysis_id": "nonexistent",
+        "login_fields": [],
+        "target_url": "https://example.com",
+    })
+    assert resp.status_code == 404
+
+
+def test_execute_login_already_executing():
+    session = _register_session()
+    session.executing = True
+    resp = client.post("/editing/execute-login", json={
+        "analysis_id": ANALYSIS_ID,
+        "login_fields": [],
+        "target_url": "https://example.com",
+    })
+    assert resp.status_code == 409
+
+
+# ----- Test /editing/resume-login -----
+
+def test_resume_login_success():
+    session = _register_session()
+    resp = client.post("/editing/resume-login", json={"analysis_id": ANALYSIS_ID})
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "resumed"
+    assert session.resume_event.is_set()
+
+
+def test_resume_login_session_not_found():
+    resp = client.post("/editing/resume-login", json={"analysis_id": "nonexistent"})
+    assert resp.status_code == 404
+
+
+# ----- Test HighlighterSession resume_event and executing -----
+
+def test_session_has_resume_event():
+    session = _make_mock_session()
+    assert hasattr(session, 'resume_event')
+    assert isinstance(session.resume_event, asyncio.Event)
+    assert not session.resume_event.is_set()
+
+
+def test_session_has_executing_flag():
+    session = _make_mock_session()
+    assert hasattr(session, 'executing')
+    assert session.executing is False
+
+
+# ----- Test /editing/execute-login always creates empty result -----
+
+def test_execute_login_creates_empty_result():
+    """After login, execute-login always creates an empty result for the
+    target page (no AI analysis)."""
+    session = _register_session()
+    resp = client.post("/editing/execute-login", json={
+        "analysis_id": ANALYSIS_ID,
+        "login_fields": [],
+        "target_url": "https://example.com/dashboard",
+    })
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "started"

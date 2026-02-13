@@ -42,8 +42,12 @@ class ValidateSelectorsJob implements ShouldQueue
 
             $selectors = [];
             foreach ($this->task->formDefinitions as $fd) {
-                $selectors[] = $fd->form_selector;
-                $selectors[] = $fd->submit_selector;
+                if ($fd->form_selector) {
+                    $selectors[] = $fd->form_selector;
+                }
+                if ($fd->submit_selector) {
+                    $selectors[] = $fd->submit_selector;
+                }
 
                 foreach ($fd->formFields as $field) {
                     $selectors[] = $field->field_selector;

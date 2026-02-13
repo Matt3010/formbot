@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-FormBot automates form submissions on external websites using AI-powered form detection (Ollama), multi-page flows, CAPTCHA/2FA manual intervention via noVNC, and scheduled execution.
+FormBot automates form submissions on external websites using a manual VNC-based field selection editor, multi-step flows, CAPTCHA/2FA manual intervention via noVNC, and scheduled execution.
 
 ## Common Commands
 
@@ -33,8 +33,8 @@ cd packages/scraper
 pip install -r requirements.txt
 pip install pytest pytest-asyncio
 pytest tests/ -v                             # Run all tests
-pytest tests/test_analyzer.py -v             # Run single test file
-pytest tests/ -k "test_name" -v              # Run single test by name
+pytest tests/test_editing_api.py -v          # Run single test file
+pytest tests/ -k "test_name" -v             # Run single test by name
 ```
 
 ### Frontend (Angular 19) — `packages/frontend/`
@@ -57,31 +57,30 @@ Backend (Laravel) :8000
     ↓ Redis Queue (async jobs)
 Queue Worker (Laravel) → ScraperClient HTTP → Scraper (FastAPI) :9000
     ↓                                              ↓
-    ↓ Pusher broadcast                      Ollama (LLM) :11434
+    ↓ Pusher broadcast                      Playwright (headed browser)
     ↓                                              ↓
-WebSocket (Soketi) :6001 ←── Broadcaster ←── AI form analysis
+WebSocket (Soketi) :6001 ←── Broadcaster ←── VNC field highlighting
     ↓
 Frontend (real-time updates)
 ```
 
-- **Backend → Scraper**: HTTP calls via `ScraperClient` (600s timeout). All heavy work (Playwright browsing, Ollama AI calls) happens in the scraper.
-- **Async processing**: Backend dispatches jobs (`AnalyzeUrlJob`, `ExecuteTaskJob`, etc.) to Redis queue. Queue worker picks them up and calls the scraper.
-- **Real-time updates**: Scraper broadcasts events via Pusher SDK → Soketi → Frontend WebSocket. Events include `AiThinking` (streaming tokens), `TaskStatusChanged`, execution step progress.
-- **VNC**: Scraper runs Xvfb + x11vnc + websockify for CAPTCHA/2FA manual intervention. Token-based routing on port 6080.
+- **Backend → Scraper**: HTTP calls via `ScraperClient` (600s timeout). All heavy work (Playwright browsing, VNC sessions) happens in the scraper.
+- **Async processing**: Backend dispatches jobs (`ExecuteTaskJob`, etc.) to Redis queue. Queue worker picks them up and calls the scraper.
+- **Real-time updates**: Scraper broadcasts events via Pusher SDK → Soketi → Frontend WebSocket. Events include `HighlightingReady`, `FieldSelected`, `FieldAdded`, `TaskStatusChanged`, execution step progress.
+- **VNC**: Scraper runs Xvfb + x11vnc + websockify for manual field selection and CAPTCHA/2FA intervention. Token-based routing on port 6080.
 
 ### Key Services
 
 **Scraper** (`packages/scraper/app/services/`):
-- `FormAnalyzer` — Cleans HTML (strips scripts/styles/SVG/comments, keeps only relevant attributes), sends to Ollama, applies heuristic override for login detection (no password field = not a login page)
-- `OllamaClient` — Ollama API wrapper. Uses `temperature: 0` for deterministic results, default model `llama3.1:8b`
 - `TaskExecutor` — Playwright-based form filling with stealth mode, multi-step flows, CAPTCHA/2FA via VNC
-- `LoginAnalyzer` — Login flow with optional VNC, then analyzes target page
+- `FieldHighlighter` — Injects highlight.js into VNC browser pages for interactive field selection (view/select/add/remove modes)
+- `HighlighterRegistry` — Singleton managing active VNC editing sessions
 - `VNCManager` — Manages Xvfb/x11vnc display sessions with token-based websockify routing
 
 **Backend** (`packages/backend/app/`):
 - `Services/ScraperClient` — HTTP client to Python scraper
 - `Services/CryptoService` — Encrypts sensitive form field values
-- `Jobs/` — Async queue jobs for analysis, execution, validation
+- `Jobs/` — Async queue jobs for execution, validation
 - `Events/` — Pusher broadcast events for real-time UI updates
 
 ### Database (PostgreSQL)
@@ -94,7 +93,7 @@ Key models with UUID primary keys:
 ### Frontend Routing
 
 - `/dashboard` — Task overview
-- `/tasks/new`, `/tasks/:id/edit` — Multi-step task wizard (URL & Analyze → Review Forms → Fill Fields → Schedule → Options)
+- `/tasks/new`, `/tasks/:id/edit` — Multi-step task wizard (URL & Open Editor → Configure Forms via VNC → Schedule → Options)
 - `/tasks/:id` — Task detail with execution history
 - `/logs` — Execution logs
 - `/settings` — App settings
@@ -103,7 +102,7 @@ Key models with UUID primary keys:
 
 - `private-tasks.{userId}` — Task status changes
 - `private-execution.{executionId}` — Step-by-step execution progress
-- `private-analysis.{analysisId}` — AI thinking tokens, analysis completion, VNC required
+- `private-analysis.{analysisId}` — VNC highlighting ready, field selection, login execution progress
 
 ## Service URLs (Development)
 
@@ -116,7 +115,6 @@ Key models with UUID primary keys:
 | noVNC | scraper:6080 | localhost:6080 |
 | PostgreSQL | db:5432 | localhost:5432 |
 | Redis | redis:6379 | localhost:6379 |
-| Ollama | ollama:11434 | localhost:11434 |
 | Test Site | host.docker.internal:3000 | localhost:3000 |
 
 ## Test Maintenance Policy
@@ -127,7 +125,7 @@ After every impactful change (new feature, bug fix, refactor, API change, model/
 2. **Update tests** that fail due to the change (e.g. changed defaults, renamed functions, new parameters).
 3. **Create new tests** for any new functionality, endpoint, service method, or behavior.
 4. **Delete tests** that are no longer relevant (removed features, deprecated code).
-5. **Align assertions** with the new behavior (e.g. if a default model changes from `llama3.2:1b` to `llama3.1:8b`, update the corresponding assertion).
+5. **Align assertions** with the new behavior.
 
 Do this **before committing**. A commit with broken tests is not acceptable.
 
@@ -136,9 +134,8 @@ Do this **before committing**. A commit with broken tests is not acceptable.
 - **WebSocket over polling**: Always prefer WebSocket (Pusher/Soketi) for real-time UI updates instead of HTTP polling. The infrastructure is already in place (`WebSocketService`, Soketi, private channels). Use polling only as a last resort when WebSocket would be overkill (e.g. a one-off data fetch with no live updates needed).
 - The scraper uses `host.docker.internal` to access the test-site from inside Docker.
 - Sensitive form field values are encrypted at rest via `CryptoService` / `ENCRYPTION_KEY`.
-- The `FormAnalyzer._clean_html()` method strips noise from HTML before sending to Ollama — always apply cleaning before the 50KB truncation.
-- The login heuristic (`_detect_login_heuristic`) checks for password inputs in the live DOM and overrides AI's `page_requires_login` to `false` if none are found.
-- Ollama prompts live in `packages/scraper/app/prompts/` — changes here affect AI behavior directly.
+- Field selection is fully manual via the VNC editor — no AI detection. Users click on fields in the live browser to add them.
+- CAPTCHA/2FA handling is user-specified: users set `captcha_detected`, `two_factor_expected`, or `human_breakpoint` flags during task setup. The executor pauses and opens VNC for manual intervention when these flags are set.
 
 ## E2E Verification
 

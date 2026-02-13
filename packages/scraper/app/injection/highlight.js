@@ -37,6 +37,7 @@
 
   let _fields = [];
   let _overlays = [];
+  let _inputListeners = []; // {el, handler} pairs for cleanup
   let _mode = 'view'; // view | select | add | remove
   let _focusedIndex = -1;
 
@@ -50,6 +51,35 @@
     } catch (e) {
       return null;
     }
+  }
+
+  function removeInputListeners() {
+    _inputListeners.forEach(function (entry) {
+      entry.el.removeEventListener('input', entry.handler);
+    });
+    _inputListeners = [];
+  }
+
+  function attachInputListeners() {
+    removeInputListeners();
+
+    _fields.forEach(function (field, index) {
+      var el = getElement(field.field_selector);
+      if (!el) return;
+
+      var handler = function () {
+        if (window.__formbot_onFieldValueChanged) {
+          window.__formbot_onFieldValueChanged(JSON.stringify({
+            index: index,
+            selector: field.field_selector,
+            value: el.value,
+          }));
+        }
+      };
+
+      el.addEventListener('input', handler);
+      _inputListeners.push({ el: el, handler: handler });
+    });
   }
 
   function removeOverlays() {
@@ -214,6 +244,15 @@
     };
   }
 
+  // ---- Prevent form submission during editing ----
+  function handleSubmit(e) {
+    if (_mode !== 'view') {
+      e.preventDefault();
+      e.stopPropagation();
+      console.log('[FormBot] Form submission prevented during editing mode');
+    }
+  }
+
   // ---- Click handler ----
   function handleClick(e) {
     if (_mode === 'view') return;
@@ -249,12 +288,22 @@
         }
       }
     } else if (_mode === 'add') {
-      // Find closest input/select/textarea
-      var formEl = target.closest('input, select, textarea, button');
-      if (!formEl) formEl = target;
+      // Find closest interactive form element — ignore non-interactive elements
+      var formEl = target.closest('input, select, textarea, button, [contenteditable="true"]');
+      if (!formEl) return;
 
       var selector = generateSelector(formEl);
       var info = detectFieldInfo(formEl);
+
+      // Detect parent <form> element
+      var parentForm = formEl.closest('form');
+      var formSelector = parentForm ? generateSelector(parentForm) : '';
+      // Also detect submit button within the form
+      var submitSelector = '';
+      if (parentForm) {
+        var submitBtn = parentForm.querySelector('button[type="submit"], input[type="submit"], button:not([type])');
+        if (submitBtn) submitSelector = generateSelector(submitBtn);
+      }
 
       if (window.__formbot_onFieldAdded) {
         window.__formbot_onFieldAdded(JSON.stringify({
@@ -264,6 +313,8 @@
           name: info.name,
           value: info.value,
           purpose: info.purpose,
+          form_selector: formSelector,
+          submit_selector: submitSelector,
         }));
       }
     } else if (_mode === 'remove') {
@@ -290,12 +341,15 @@
       _fields = typeof fieldsJson === 'string' ? JSON.parse(fieldsJson) : fieldsJson;
       _mode = 'view';
       document.addEventListener('click', handleClick, true);
+      document.addEventListener('submit', handleSubmit, true);
       createOverlays();
+      attachInputListeners();
     },
 
     command_updateFields: function (fieldsJson) {
       _fields = typeof fieldsJson === 'string' ? JSON.parse(fieldsJson) : fieldsJson;
       createOverlays();
+      attachInputListeners();
     },
 
     command_setMode: function (mode) {
@@ -347,9 +401,27 @@
       }
     },
 
+    command_fillField: function (index, value) {
+      if (index < 0 || index >= _fields.length) return;
+      var el = getElement(_fields[index].field_selector);
+      if (!el) return;
+
+      el.value = value;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    },
+
+    command_readFieldValue: function (index) {
+      if (index < 0 || index >= _fields.length) return '';
+      var el = getElement(_fields[index].field_selector);
+      return el ? el.value : '';
+    },
+
     command_cleanup: function () {
+      removeInputListeners();
       removeOverlays();
       document.removeEventListener('click', handleClick, true);
+      document.removeEventListener('submit', handleSubmit, true);
       document.body.style.cursor = '';
       _fields = [];
       _mode = 'view';

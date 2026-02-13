@@ -13,7 +13,6 @@ class DefaultSettingsSeeder extends Seeder
     public function run(): void
     {
         $defaults = [
-            'ollama_model' => 'llama3.1:8b',
             'max_parallel_global' => '5',
             'retention_days' => '30',
             'default_action_delay_ms' => '500',

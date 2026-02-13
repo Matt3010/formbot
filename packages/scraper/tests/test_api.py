@@ -1,14 +1,11 @@
-"""Tests for FastAPI endpoints (analyze, execute, validate, health)."""
+"""Tests for FastAPI endpoints (execute, validate, health, VNC)."""
 
-import copy
 import uuid
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import AsyncClient, ASGITransport
 
 from tests.conftest import (
-    SIMPLE_LOGIN_ANALYSIS,
-    NO_FORMS_ANALYSIS,
     make_task,
     make_form_definition,
     make_form_field,
@@ -26,97 +23,6 @@ def _get_app():
 
 
 # ---------------------------------------------------------------------------
-# POST /analyze
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_analyze_endpoint_success():
-    """POST /analyze returns LLM form analysis for the given URL."""
-    mock_analyzer = AsyncMock()
-    mock_analyzer.analyze_url = AsyncMock(return_value=copy.deepcopy(SIMPLE_LOGIN_ANALYSIS))
-
-    with patch("app.api.analyze.FormAnalyzer", return_value=mock_analyzer):
-        app = _get_app()
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as ac:
-            response = await ac.post("/analyze", json={
-                "url": "https://example.com/login",
-            })
-
-    assert response.status_code == 200
-    data = response.json()
-    assert "forms" in data
-    assert len(data["forms"]) == 1
-    assert data["forms"][0]["form_type"] == "login"
-    assert data["page_requires_login"] is True
-
-    mock_analyzer.analyze_url.assert_awaited_once_with("https://example.com/login", analysis_id=None)
-
-
-@pytest.mark.asyncio
-async def test_analyze_endpoint_with_custom_model():
-    """POST /analyze passes ollama_model to FormAnalyzer."""
-    mock_analyzer = AsyncMock()
-    mock_analyzer.analyze_url = AsyncMock(return_value=NO_FORMS_ANALYSIS)
-
-    with patch("app.api.analyze.FormAnalyzer", return_value=mock_analyzer) as MockClass:
-        app = _get_app()
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as ac:
-            response = await ac.post("/analyze", json={
-                "url": "https://example.com",
-                "ollama_model": "mistral:7b",
-            })
-
-    assert response.status_code == 200
-    MockClass.assert_called_once_with(ollama_model="mistral:7b")
-
-
-@pytest.mark.asyncio
-async def test_analyze_endpoint_missing_url():
-    """POST /analyze returns 422 when url is missing."""
-    app = _get_app()
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        response = await ac.post("/analyze", json={})
-
-    assert response.status_code == 422
-
-
-# ---------------------------------------------------------------------------
-# POST /analyze/dynamic
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_analyze_dynamic_endpoint():
-    """POST /analyze/dynamic returns analysis for dynamic page re-analysis."""
-    mock_analyzer = AsyncMock()
-    mock_analyzer.analyze_dynamic = AsyncMock(return_value=copy.deepcopy(SIMPLE_LOGIN_ANALYSIS))
-
-    with patch("app.api.analyze.FormAnalyzer", return_value=mock_analyzer):
-        app = _get_app()
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as ac:
-            response = await ac.post("/analyze/dynamic", json={
-                "url": "https://example.com/step2",
-                "previous_state": {"forms": []},
-                "interaction_performed": "clicked next",
-            })
-
-    assert response.status_code == 200
-    data = response.json()
-    assert "forms" in data
-
-    mock_analyzer.analyze_dynamic.assert_awaited_once_with(
-        "https://example.com/step2",
-        {"forms": []},
-        "clicked next",
-    )
-
-
-# ---------------------------------------------------------------------------
 # POST /execute
 # ---------------------------------------------------------------------------
 
@@ -124,7 +30,6 @@ async def test_analyze_dynamic_endpoint():
 @pytest.mark.asyncio
 async def test_execute_endpoint_starts_background():
     """POST /execute returns immediately with status=started."""
-    # We need to mock asyncio.create_task to prevent actual execution
     with patch("app.api.execute.asyncio.create_task") as mock_create_task:
         app = _get_app()
         transport = ASGITransport(app=app)
@@ -140,7 +45,6 @@ async def test_execute_endpoint_starts_background():
     assert "task_id" in data
     assert "message" in data
 
-    # Background task was created
     mock_create_task.assert_called_once()
 
 
@@ -206,7 +110,6 @@ async def test_execute_status_completed():
         # Result is consumed (popped)
         assert task_id not in _execution_results
     finally:
-        # Clean up in case of test failure
         _execution_results.pop(task_id, None)
 
 
@@ -279,7 +182,6 @@ async def test_validate_selectors_all_valid():
     def override_get_db():
         yield mock_db
 
-    # Mock Playwright so all query_selector calls return a non-None element
     from tests.conftest import _make_mock_page, _make_mock_context, _make_mock_browser, _make_mock_playwright
 
     page = _make_mock_page()
@@ -382,39 +284,16 @@ async def test_validate_selectors_invalid_found():
 
 
 @pytest.mark.asyncio
-async def test_health_check_ollama_available():
-    """GET /health returns ok with ollama=connected."""
-    mock_ollama = AsyncMock()
-    mock_ollama.is_available = AsyncMock(return_value=True)
-
-    with patch("app.services.ollama_client.OllamaClient", return_value=mock_ollama):
-        app = _get_app()
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as ac:
-            response = await ac.get("/health")
+async def test_health_check():
+    """GET /health returns ok."""
+    app = _get_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        response = await ac.get("/health")
 
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "ok"
-    assert data["ollama"] == "connected"
-
-
-@pytest.mark.asyncio
-async def test_health_check_ollama_unavailable():
-    """GET /health returns ok with ollama=unavailable when Ollama is down."""
-    mock_ollama = AsyncMock()
-    mock_ollama.is_available = AsyncMock(return_value=False)
-
-    with patch("app.services.ollama_client.OllamaClient", return_value=mock_ollama):
-        app = _get_app()
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as ac:
-            response = await ac.get("/health")
-
-    assert response.status_code == 200
-    data = response.json()
-    assert data["status"] == "ok"
-    assert data["ollama"] == "unavailable"
 
 
 # ---------------------------------------------------------------------------
@@ -486,81 +365,6 @@ async def test_vnc_stop_endpoint():
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "stopped"
-
-
-# ---------------------------------------------------------------------------
-# POST /analyze/login-and-target
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_analyze_login_and_target_endpoint():
-    """POST /analyze/login-and-target returns started with analysis_id."""
-    with patch("app.api.analyze.asyncio.create_task") as mock_create_task:
-        app = _get_app()
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as ac:
-            response = await ac.post("/analyze/login-and-target", json={
-                "analysis_id": "test-analysis-001",
-                "login_url": "https://example.com/login",
-                "target_url": "https://example.com/dashboard",
-                "login_form_selector": "#login-form",
-                "login_submit_selector": "#submit-btn",
-                "login_fields": [
-                    {"field_selector": "#username", "value": "admin", "field_type": "text"},
-                    {"field_selector": "#password", "value": "secret", "field_type": "password", "is_sensitive": True},
-                ],
-                "needs_vnc": False,
-            })
-
-    assert response.status_code == 200
-    data = response.json()
-    assert data["status"] == "started"
-    assert data["analysis_id"] == "test-analysis-001"
-
-    # Background task was created
-    mock_create_task.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_analyze_login_and_target_missing_required_fields():
-    """POST /analyze/login-and-target returns 422 when required fields are missing."""
-    app = _get_app()
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        response = await ac.post("/analyze/login-and-target", json={
-            "analysis_id": "test-analysis-002",
-            # Missing login_url, target_url, etc.
-        })
-
-    assert response.status_code == 422
-
-
-@pytest.mark.asyncio
-async def test_analyze_login_and_target_with_vnc():
-    """POST /analyze/login-and-target accepts needs_vnc=True."""
-    with patch("app.api.analyze.asyncio.create_task"):
-        app = _get_app()
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as ac:
-            response = await ac.post("/analyze/login-and-target", json={
-                "analysis_id": "test-analysis-003",
-                "login_url": "https://example.com/login",
-                "target_url": "https://example.com/dashboard",
-                "login_form_selector": "#login-form",
-                "login_submit_selector": "#submit-btn",
-                "login_fields": [],
-                "needs_vnc": True,
-            })
-
-    assert response.status_code == 200
-    data = response.json()
-    assert data["status"] == "started"
-
-
-# ---------------------------------------------------------------------------
-# POST /vnc/resume-analysis
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio

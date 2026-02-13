@@ -52,6 +52,7 @@ import { VncFormEditorComponent } from './vnc-form-editor/vnc-form-editor.compon
           <app-step-url
             (formsDetected)="onFormsDetected($event)"
             (loginConfigChanged)="onLoginConfigChanged($event)"
+
           />
           <div class="step-actions mt-2">
             <button mat-raised-button color="primary" (click)="proceedToVncEditor()" [disabled]="detectedForms().length === 0">
@@ -68,6 +69,8 @@ import { VncFormEditorComponent } from './vnc-form-editor/vnc-form-editor.compon
               [analysisId]="vncAnalysisId()!"
               [analysisResult]="vncAnalysisResult()"
               [resumeCorrections]="vncResumeCorrections()"
+              [requiresLogin]="requiresLogin()"
+              [targetUrl]="vncTargetUrl()"
               (confirmed)="onVncConfirmed($event)"
               (cancelled)="onVncCancelled()"
             />
@@ -152,12 +155,12 @@ export class TaskWizardComponent implements OnInit {
   // Login config
   requiresLogin = signal(false);
   loginUrl = signal<string | null>(null);
-  loginEveryTime = signal(true);
 
   // VNC editor state
   vncAnalysisId = signal<string | null>(null);
   vncAnalysisResult = signal<any>(null);
   vncResumeCorrections = signal<any>(null);
+  vncTargetUrl = signal<string | null>(null);
 
   taskNameControl = this.fb.nonNullable.control('', Validators.required);
   detectedForms = signal<FormDefinition[]>([]);
@@ -261,6 +264,7 @@ export class TaskWizardComponent implements OnInit {
       ai_confidence: form.ai_confidence ?? null,
       captcha_detected: form.captcha_detected ?? false,
       two_factor_expected: form.two_factor_expected ?? false,
+      human_breakpoint: form.human_breakpoint ?? false,
       fields: (form.fields || []).map((field: any, fIdx: number) => ({
         id: field.id || `temp-field-${idx}-${fIdx}`,
         form_definition_id: form.id || `temp-${idx}`,
@@ -296,7 +300,6 @@ export class TaskWizardComponent implements OnInit {
           this.stepUrl.setLoginConfig({
             requires_login: true,
             login_url: analysis.login_url,
-            login_every_time: true,
           });
         }
       }
@@ -347,7 +350,6 @@ export class TaskWizardComponent implements OnInit {
         if (task.requires_login) {
           this.requiresLogin.set(true);
           this.loginUrl.set(task.login_url);
-          this.loginEveryTime.set(task.login_every_time);
         }
 
         // Populate child components after view init
@@ -358,7 +360,6 @@ export class TaskWizardComponent implements OnInit {
               this.stepUrl.setLoginConfig({
                 requires_login: task.requires_login,
                 login_url: task.login_url,
-                login_every_time: task.login_every_time,
               });
             }
           }
@@ -373,7 +374,6 @@ export class TaskWizardComponent implements OnInit {
   onLoginConfigChanged(config: LoginConfig) {
     this.requiresLogin.set(config.requires_login);
     this.loginUrl.set(config.login_url);
-    this.loginEveryTime.set(config.login_every_time);
   }
 
   onFormsDetected(forms: FormDefinition[]) {
@@ -394,23 +394,49 @@ export class TaskWizardComponent implements OnInit {
     this.vncAnalysisId.set(analysisId);
     this.vncAnalysisResult.set(null);
 
-    // Start the interactive session via backend
-    this.taskService.analyzeInteractive(analysisId).subscribe({
-      next: () => {
-        this.notify.info('Starting visual editor...');
-        // Temporarily disable linear mode so we can advance to step 2
-        this.resumingFromAnalysis.set(true);
-        setTimeout(() => {
-          if (this.stepper) {
-            this.stepper.selectedIndex = 1;
-          }
-          setTimeout(() => this.resumingFromAnalysis.set(false), 100);
-        });
-      },
-      error: (err) => {
-        this.notify.error(err.error?.message || 'Failed to start visual editor');
-      },
-    });
+    // When login is required, pass the login URL so VNC opens the login page.
+    // The target URL is stored separately for the login→target transition.
+    if (this.requiresLogin()) {
+      const loginUrl = this.stepUrl.loginUrlControl.value;
+      const targetUrl = this.stepUrl.urlControl.value;
+      this.vncTargetUrl.set(targetUrl || null);
+
+      // Start editing with the login URL override
+      this.taskService.analyzeInteractiveWithUrl(analysisId, loginUrl).subscribe({
+        next: () => {
+          this.notify.info('Starting visual editor (login page)...');
+          this.resumingFromAnalysis.set(true);
+          setTimeout(() => {
+            if (this.stepper) {
+              this.stepper.selectedIndex = 1;
+            }
+            setTimeout(() => this.resumingFromAnalysis.set(false), 100);
+          });
+        },
+        error: (err) => {
+          this.notify.error(err.error?.message || 'Failed to start visual editor');
+        },
+      });
+    } else {
+      this.vncTargetUrl.set(null);
+
+      // Start the interactive session via backend
+      this.taskService.analyzeInteractive(analysisId).subscribe({
+        next: () => {
+          this.notify.info('Starting visual editor...');
+          this.resumingFromAnalysis.set(true);
+          setTimeout(() => {
+            if (this.stepper) {
+              this.stepper.selectedIndex = 1;
+            }
+            setTimeout(() => this.resumingFromAnalysis.set(false), 100);
+          });
+        },
+        error: (err) => {
+          this.notify.error(err.error?.message || 'Failed to start visual editor');
+        },
+      });
+    }
   }
 
   onVncConfirmed(forms: FormDefinition[]) {
@@ -455,11 +481,12 @@ export class TaskWizardComponent implements OnInit {
       step_order: f.step_order,
       page_url: f.page_url,
       form_type: f.form_type,
-      form_selector: f.form_selector,
-      submit_selector: f.submit_selector,
+      form_selector: f.form_selector || null,
+      submit_selector: f.submit_selector || null,
       ai_confidence: f.ai_confidence,
       captcha_detected: f.captcha_detected ?? false,
       two_factor_expected: f.two_factor_expected ?? false,
+      human_breakpoint: f.human_breakpoint ?? false,
       form_fields: (f.fields || []).map((field, idx) => ({
         field_name: field.field_name,
         field_type: field.field_type,
@@ -489,7 +516,6 @@ export class TaskWizardComponent implements OnInit {
       max_parallel: options.max_parallel,
       requires_login: this.requiresLogin(),
       login_url: this.loginUrl(),
-      login_every_time: this.loginEveryTime(),
       form_definitions: formDefs,
     };
   }

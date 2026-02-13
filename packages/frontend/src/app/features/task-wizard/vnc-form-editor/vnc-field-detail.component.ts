@@ -69,20 +69,22 @@ import { EditorField, TestSelectorResult } from '../../../core/models/vnc-editor
           </mat-select>
         </mat-form-field>
 
-        <mat-form-field appearance="outline" class="full-width">
-          <mat-label>Value</mat-label>
-          <input matInput [(ngModel)]="editValue"
-            [type]="editSensitive ? 'password' : 'text'"
-            (ngModelChange)="emitChange()">
-        </mat-form-field>
+        @if (editType !== 'submit' && editType !== 'button') {
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Value</mat-label>
+            <input matInput [(ngModel)]="editValue"
+              [type]="editSensitive ? 'password' : 'text'"
+              (ngModelChange)="emitChange()">
+          </mat-form-field>
 
-        <mat-checkbox [(ngModel)]="editSensitive" (ngModelChange)="emitChange()">
-          Sensitive (encrypted at rest)
-        </mat-checkbox>
+          <mat-checkbox [(ngModel)]="editSensitive" (ngModelChange)="emitChange()">
+            Sensitive (encrypted at rest)
+          </mat-checkbox>
 
-        <mat-checkbox [(ngModel)]="editRequired" (ngModelChange)="emitChange()" class="ml-2">
-          Required
-        </mat-checkbox>
+          <mat-checkbox [(ngModel)]="editRequired" (ngModelChange)="emitChange()" class="ml-2">
+            Required
+          </mat-checkbox>
+        }
       </div>
     } @else {
       <div class="no-selection">

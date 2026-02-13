@@ -16,7 +16,7 @@ export class VncEditorService {
   }
 
   saveDraft(analysisId: string, corrections: UserCorrections): Observable<any> {
-    return this.api.put(`/analyses/${analysisId}/editing/draft`, {
+    return this.api.patch(`/analyses/${analysisId}/editing/draft`, {
       user_corrections: corrections,
     });
   }
@@ -44,6 +44,14 @@ export class VncEditorService {
     return this.sendCommand(analysisId, 'test-selector', { selector });
   }
 
+  fillField(analysisId: string, fieldIndex: number, value: string): Observable<any> {
+    return this.sendCommand(analysisId, 'fill-field', { field_index: fieldIndex, value });
+  }
+
+  readFieldValue(analysisId: string, fieldIndex: number): Observable<any> {
+    return this.sendCommand(analysisId, 'read-field-value', { field_index: fieldIndex });
+  }
+
   confirmAll(analysisId: string, corrections: UserCorrections, taskName?: string): Observable<any> {
     return this.api.post(`/analyses/${analysisId}/editing/confirm`, {
       user_corrections: corrections,
@@ -57,5 +65,20 @@ export class VncEditorService {
 
   navigateStep(analysisId: string, step: number, url: string): Observable<any> {
     return this.api.post(`/analyses/${analysisId}/editing/step`, { step, url });
+  }
+
+  executeLogin(analysisId: string, loginFields: any[], targetUrl: string, submitSelector: string, flags?: { captcha_detected?: boolean; two_factor_expected?: boolean; human_breakpoint?: boolean }): Observable<any> {
+    return this.api.post(`/analyses/${analysisId}/editing/execute-login`, {
+      login_fields: loginFields,
+      target_url: targetUrl,
+      submit_selector: submitSelector,
+      captcha_detected: flags?.captcha_detected ?? false,
+      two_factor_expected: flags?.two_factor_expected ?? false,
+      human_breakpoint: flags?.human_breakpoint ?? false,
+    });
+  }
+
+  resumeLogin(analysisId: string): Observable<any> {
+    return this.api.post(`/analyses/${analysisId}/editing/resume-login`);
   }
 }
