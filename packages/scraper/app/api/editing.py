@@ -147,7 +147,6 @@ async def navigate_step(request: NavigateRequest):
     try:
         await session.page.goto(request.url, wait_until="networkidle", timeout=30000)
         await session.page.wait_for_timeout(1000)
-        # Re-inject highlights will happen automatically via page load event
         return {"status": "ok", "url": request.url}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Navigation failed: {str(e)}")
@@ -185,139 +184,102 @@ async def execute_login(request: ExecuteLoginRequest):
         page = session.page
         analysis_id = request.analysis_id
 
+        # Helper function to DRY up manual intervention pauses
+        async def _pause_for_human(phase_name: str, message_text: str):
+            broadcaster.trigger_analysis(analysis_id, "LoginExecutionProgress", {
+                "phase": phase_name,
+                "message": message_text,
+                "needs_vnc": True,
+            })
+            session.resume_event.clear()
+            await session.resume_event.wait()
+            try:
+                await page.wait_for_load_state("networkidle", timeout=15000)
+            except Exception:
+                await page.wait_for_timeout(3000)
+
         try:
-            print(f"[EXECUTE_LOGIN] Starting login execution for {analysis_id}", flush=True)
             # Phase: filling
             broadcaster.trigger_analysis(analysis_id, "LoginExecutionProgress", {
                 "phase": "filling",
                 "message": "Filling login form fields...",
             })
-            print(f"[EXECUTE_LOGIN] Filling {len(request.login_fields)} fields", flush=True)
 
             submit_field_selector = None
-            for i, field in enumerate(request.login_fields):
-                print(f"[EXECUTE_LOGIN] Processing field {i+1}/{len(request.login_fields)}: {field.field_selector} (type={field.field_type})", flush=True)
-                # Skip submit buttons during filling — they'll be clicked in the submit phase
+            for field in request.login_fields:
                 if field.field_type in ("submit", "button"):
                     submit_field_selector = field.field_selector
-                    print(f"[EXECUTE_LOGIN] Skipped submit/button field", flush=True)
                     continue
                 try:
                     el = page.locator(field.field_selector).first
                     field_value = field.value or ""
+
                     if field.field_type == "checkbox":
-                        await el.check()
+                        if str(field_value).lower() in ("true", "1", "yes", "on"):
+                            await el.check()
+                        else:
+                            await el.uncheck()
                     elif field.field_type == "select":
                         await el.select_option(value=field_value)
                     else:
                         await el.click()
                         await el.fill(field_value)
+
                     await page.wait_for_timeout(200)
-                    print(f"[EXECUTE_LOGIN] Filled field {i+1} successfully", flush=True)
-                except Exception as e:
-                    print(f"[EXECUTE_LOGIN] Failed to fill {field.field_selector}: {e}", flush=True)
+                except Exception:
+                    pass  # Silently skip fields that fail to fill
 
             # Phase: submitting
-            print(f"[EXECUTE_LOGIN] Phase: submitting (submit_selector={request.submit_selector}, found={submit_field_selector})", flush=True)
             broadcaster.trigger_analysis(analysis_id, "LoginExecutionProgress", {
                 "phase": "submitting",
                 "message": "Submitting login form...",
             })
 
-            # Use explicit submit_selector, or the submit field found during filling, or Enter
             effective_submit = request.submit_selector or submit_field_selector
-            print(f"[EXECUTE_LOGIN] Using effective_submit={effective_submit}", flush=True)
+
+            try:
+                await page.evaluate("if(window.__FORMBOT_HIGHLIGHT) window.__FORMBOT_HIGHLIGHT.command_cleanup()")
+            except Exception:
+                pass
+
             if effective_submit:
                 try:
-                    print(f"[EXECUTE_LOGIN] Clicking submit button: {effective_submit}", flush=True)
-                    await page.locator(effective_submit).first.click()
-                    print(f"[EXECUTE_LOGIN] Submit clicked", flush=True)
-                except Exception as e:
-                    print(f"[EXECUTE_LOGIN] Submit click failed, using Enter: {e}", flush=True)
-                    await page.keyboard.press("Enter")
+                    await page.locator(effective_submit).first.click(timeout=5000)
+                except Exception:
+                    try:
+                        await page.locator(effective_submit).first.click(force=True, timeout=5000)
+                    except Exception:
+                        await page.evaluate(f"document.querySelector('{effective_submit}').click()")
             else:
-                print(f"[EXECUTE_LOGIN] No submit selector, using Enter", flush=True)
                 await page.keyboard.press("Enter")
 
-            # Wait for navigation after submit
-            print(f"[EXECUTE_LOGIN] Waiting for page to settle after submit...", flush=True)
+            # Allow time for cookies and redirects
             try:
-                await page.wait_for_load_state("networkidle", timeout=15000)
-                print(f"[EXECUTE_LOGIN] Page settled (networkidle)", flush=True)
-            except Exception as e:
-                print(f"[EXECUTE_LOGIN] Networkidle timeout, waiting 3s: {e}", flush=True)
-                await page.wait_for_timeout(3000)
+                await page.wait_for_load_state("networkidle", timeout=10000)
+                await page.wait_for_timeout(5000)
+            except Exception:
+                await page.wait_for_timeout(6000)
 
-            # Check if login actually succeeded by verifying we're not still on login page
-            print(f"[EXECUTE_LOGIN] Checking current URL...", flush=True)
-            current_url = page.url.lower()
-            print(f"[EXECUTE_LOGIN] Current URL: {current_url}", flush=True)
-            login_keywords = ['login', 'signin', 'sign-in', 'sign_in', 'authenticate', 'auth']
-            still_on_login = any(keyword in current_url for keyword in login_keywords)
-            print(f"[EXECUTE_LOGIN] Still on login page? {still_on_login}", flush=True)
-
-            if still_on_login and not request.captcha_detected and not request.two_factor_expected and not request.human_breakpoint:
-                # Login likely failed - we're still on the login page
-                broadcaster.trigger_analysis(analysis_id, "LoginExecutionComplete", {
-                    "success": False,
-                    "error": "Login failed - still on login page. Please check credentials and try again.",
-                })
-                session.executing = False
-                return
-
-            # Pause for manual intervention only when user explicitly flagged it
+            # Manual Interventions
             if request.captcha_detected:
-                broadcaster.trigger_analysis(analysis_id, "LoginExecutionProgress", {
-                    "phase": "captcha",
-                    "message": "CAPTCHA expected — please solve it in the VNC viewer, then click Resume.",
-                    "needs_vnc": True,
-                })
-                session.resume_event.clear()
-                await session.resume_event.wait()
-
-                try:
-                    await page.wait_for_load_state("networkidle", timeout=15000)
-                except Exception:
-                    await page.wait_for_timeout(3000)
+                await _pause_for_human("captcha", "CAPTCHA expected — please solve it in the VNC viewer, then click Resume.")
 
             if request.two_factor_expected:
-                broadcaster.trigger_analysis(analysis_id, "LoginExecutionProgress", {
-                    "phase": "2fa",
-                    "message": "2FA expected — complete verification in the VNC viewer, then click Resume.",
-                    "needs_vnc": True,
-                })
-                session.resume_event.clear()
-                await session.resume_event.wait()
-
-                try:
-                    await page.wait_for_load_state("networkidle", timeout=15000)
-                except Exception:
-                    await page.wait_for_timeout(3000)
+                await _pause_for_human("2fa", "2FA expected — complete verification in the VNC viewer, then click Resume.")
 
             if request.human_breakpoint:
-                broadcaster.trigger_analysis(analysis_id, "LoginExecutionProgress", {
-                    "phase": "human_breakpoint",
-                    "message": "Human breakpoint — complete any manual steps in the VNC viewer, then click Resume.",
-                    "needs_vnc": True,
-                })
-                session.resume_event.clear()
-                await session.resume_event.wait()
-
-                try:
-                    await page.wait_for_load_state("networkidle", timeout=15000)
-                except Exception:
-                    await page.wait_for_timeout(3000)
+                await _pause_for_human("human_breakpoint", "Human breakpoint — complete any manual steps in the VNC viewer, then click Resume.")
 
             # Phase: navigating to target
             broadcaster.trigger_analysis(analysis_id, "LoginExecutionProgress", {
                 "phase": "navigating",
-                "message": f"Navigating to target page...",
+                "message": "Navigating to target page...",
             })
 
-            await page.goto(request.target_url, wait_until="networkidle", timeout=30000)
-            await page.wait_for_timeout(2000)
+            await page.goto(request.target_url, wait_until="domcontentloaded", timeout=45000)
+            await page.wait_for_timeout(3000)
 
-            # Create empty result for the target page (user selects fields manually)
+            # Prepare Target Phase
             target_result = {
                 "url": request.target_url,
                 "page_requires_login": False,
@@ -331,8 +293,7 @@ async def execute_login(request: ExecuteLoginRequest):
             }
             target_fields = []
 
-            # Re-inject highlighter with empty fields (reuse existing to avoid
-            # re-registering already-exposed functions on the page)
+            # Re-inject highlighter with empty fields
             session.highlighter._fields = target_fields
             await session.highlighter.inject()
             session.fields = target_fields
@@ -344,8 +305,6 @@ async def execute_login(request: ExecuteLoginRequest):
             })
 
         except Exception as e:
-            import traceback
-            print(f"[EXECUTE_LOGIN] EXCEPTION: {e}\n{traceback.format_exc()}", flush=True)
             broadcaster.trigger_analysis(analysis_id, "LoginExecutionComplete", {
                 "success": False,
                 "error": str(e),

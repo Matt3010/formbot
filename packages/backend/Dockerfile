@@ -54,10 +54,12 @@ COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 # Entrypoint script (handles migrations, Passport keys, etc.)
 COPY docker/entrypoint.sh /app/docker/entrypoint.sh
-RUN chmod +x /app/docker/entrypoint.sh
+
+# Fix line endings and set permissions
+RUN sed -i 's/\r$//' /app/docker/entrypoint.sh && \
+    chmod +x /app/docker/entrypoint.sh
 
 # PHP-FPM listens on 127.0.0.1:9000 by default, nginx connects to that
-
 EXPOSE 8000
 
 ENTRYPOINT ["/app/docker/entrypoint.sh"]
