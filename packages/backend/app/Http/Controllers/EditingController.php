@@ -26,19 +26,23 @@ class EditingController extends Controller
             return response()->json(['message' => 'Analysis must be completed before editing.'], 422);
         }
 
-        // Check for active session (concurrency guard)
-        if (
-            $analysis->editing_status === 'active' &&
-            $analysis->editing_expires_at &&
-            $analysis->editing_expires_at->isFuture()
-        ) {
-            return response()->json(['message' => 'An editing session is already active.'], 409);
+        // If a previous session exists, clean it up before starting a new one
+        if ($analysis->editing_status === 'active') {
+            try {
+                $scraperClient->stopEditingSession($analysis->id);
+            } catch (\Exception $e) {
+                Log::warning('Failed to stop previous editing session', [
+                    'analysis_id' => $analysis->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
 
         try {
             $result = $scraperClient->startInteractiveAnalysis(
                 url: $analysis->url,
                 analysisId: $analysis->id,
+                analysisResult: $analysis->result,
             );
 
             $analysis->update([
@@ -76,6 +80,7 @@ class EditingController extends Controller
             $result = $scraperClient->startInteractiveAnalysis(
                 url: $analysis->url,
                 analysisId: $analysis->id,
+                analysisResult: $analysis->result,
             );
 
             $analysis->update([

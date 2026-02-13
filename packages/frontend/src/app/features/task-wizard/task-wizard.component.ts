@@ -63,13 +63,17 @@ import { VncFormEditorComponent } from './vnc-form-editor/vnc-form-editor.compon
         <!-- Step 2: Configure Forms (VNC Editor) -->
         <mat-step [completed]="confirmedFromVnc().length > 0">
           <ng-template matStepLabel>Configure Forms</ng-template>
-          <app-vnc-form-editor
-            [analysisId]="vncAnalysisId()!"
-            [analysisResult]="vncAnalysisResult()"
-            [resumeCorrections]="vncResumeCorrections()"
-            (confirmed)="onVncConfirmed($event)"
-            (cancelled)="onVncCancelled()"
-          />
+          @if (vncAnalysisId()) {
+            <app-vnc-form-editor
+              [analysisId]="vncAnalysisId()!"
+              [analysisResult]="vncAnalysisResult()"
+              [resumeCorrections]="vncResumeCorrections()"
+              (confirmed)="onVncConfirmed($event)"
+              (cancelled)="onVncCancelled()"
+            />
+          } @else {
+            <p>Click "Next" on Step 1 after analyzing a URL to start the visual editor.</p>
+          }
           <div class="step-actions mt-2">
             <button mat-button matStepperPrevious>
               <mat-icon>arrow_back</mat-icon> Back
@@ -283,10 +287,11 @@ export class TaskWizardComponent implements OnInit {
 
     this.detectedForms.set(forms);
 
-    // Skip to step 2 (Configure Forms) after view is ready
+    // Set URL and login config in step-url, then start VNC session
     setTimeout(() => {
       if (this.stepUrl) {
         this.stepUrl.setUrl(analysis.url);
+        this.stepUrl.currentAnalysisId.set(analysis.id);
         if (analysis.type === 'login_and_target' && analysis.login_url) {
           this.stepUrl.setLoginConfig({
             requires_login: true,
@@ -295,11 +300,23 @@ export class TaskWizardComponent implements OnInit {
           });
         }
       }
-      if (this.stepper) {
-        this.stepper.selectedIndex = 1; // Go to "Configure Forms"
-      }
-      // Re-enable linear mode after navigation
-      setTimeout(() => this.resumingFromAnalysis.set(false), 100);
+
+      // Start VNC session and advance to Step 2
+      this.vncAnalysisId.set(analysis.id);
+      this.vncAnalysisResult.set(analysis.result);
+      this.taskService.analyzeInteractive(analysis.id).subscribe({
+        next: () => {
+          this.notify.info('Starting visual editor...');
+          if (this.stepper) {
+            this.stepper.selectedIndex = 1;
+          }
+          setTimeout(() => this.resumingFromAnalysis.set(false), 100);
+        },
+        error: (err) => {
+          this.notify.error(err.error?.message || 'Failed to start visual editor');
+          this.resumingFromAnalysis.set(false);
+        },
+      });
     });
   }
 
@@ -361,6 +378,10 @@ export class TaskWizardComponent implements OnInit {
 
   onFormsDetected(forms: FormDefinition[]) {
     this.detectedForms.set(forms);
+    // Auto-advance to VNC editor as soon as AI detects forms
+    if (forms.length > 0 && !this.isEditing()) {
+      setTimeout(() => this.proceedToVncEditor());
+    }
   }
 
   proceedToVncEditor() {

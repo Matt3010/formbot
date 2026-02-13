@@ -266,13 +266,18 @@ class ScraperClient
     /**
      * Start an interactive analysis session with VNC for field editing.
      */
-    public function startInteractiveAnalysis(string $url, string $analysisId): array
+    public function startInteractiveAnalysis(string $url, string $analysisId, ?array $analysisResult = null): array
     {
+        $payload = [
+            'url' => $url,
+            'analysis_id' => $analysisId,
+        ];
+        if ($analysisResult) {
+            $payload['analysis_result'] = $analysisResult;
+        }
+
         $response = Http::timeout($this->timeout)
-            ->post("{$this->baseUrl}/analyze/interactive", [
-                'url' => $url,
-                'analysis_id' => $analysisId,
-            ]);
+            ->post("{$this->baseUrl}/analyze/interactive", $payload);
 
         if (!$response->successful()) {
             Log::error('Scraper startInteractiveAnalysis failed', [

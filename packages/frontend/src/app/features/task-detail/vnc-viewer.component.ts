@@ -93,9 +93,13 @@ export class VncViewerComponent {
 
   confirmed = signal(false);
 
-  safeVncUrl = computed(() =>
-    this.sanitizer.bypassSecurityTrustResourceUrl(this.vncUrl())
-  );
+  safeVncUrl = computed(() => {
+    let url = this.vncUrl();
+    if (url && !url.includes('resize=')) {
+      url += (url.includes('?') ? '&' : '?') + 'resize=scale';
+    }
+    return this.sanitizer.bypassSecurityTrustResourceUrl(url);
+  });
 
   onResume() {
     this.api.post(`/executions/${this.executionId()}/resume`).subscribe({

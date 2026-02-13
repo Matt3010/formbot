@@ -153,7 +153,6 @@ class VNCManager:
                 "-nopw",
                 "-listen", "localhost",
                 "-xkb",
-                "-ncache", "10",
                 "-forever",
                 "-rfbport", str(vnc_port),
             ],
@@ -261,7 +260,7 @@ class VNCManager:
 
         novnc_host = os.environ.get("NOVNC_PUBLIC_HOST", "localhost")
         vnc_url = (
-            f"http://{novnc_host}:{self._WS_PORT}/vnc_lite.html"
+            f"http://{novnc_host}:{self._WS_PORT}/vnc_embed.html"
             f"?path=websockify/?token={token}&autoconnect=true"
         )
         session["vnc_url"] = vnc_url

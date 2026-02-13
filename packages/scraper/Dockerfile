@@ -41,6 +41,9 @@ RUN playwright install chromium
 # Copy application
 COPY . .
 
+# Custom noVNC embed page (no toolbar, auto-scaling)
+COPY vnc_embed.html /usr/share/novnc/vnc_embed.html
+
 # Create directories
 RUN mkdir -p /app/screenshots /app/uploads
 

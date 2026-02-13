@@ -176,14 +176,12 @@ class FormAnalyzer:
         analysis_id: str,
         vnc_manager=None,
         stealth: bool = True,
+        existing_result: dict | None = None,
     ) -> dict:
         """Analyze URL interactively: keep browser open for VNC editing.
 
-        Similar to analyze_url() but:
-        1. Launches headed browser on Xvfb display (via vnc_manager)
-        2. Streams AI thinking tokens
-        3. Does NOT close the browser — creates FieldHighlighter + registers session
-        4. Activates VNC and broadcasts HighlightingReady
+        If existing_result is provided, skips the Ollama AI analysis and uses
+        the pre-existing result to set up field highlights directly.
         """
         from app.services.vnc_manager import VNCManager
 
@@ -211,52 +209,57 @@ class FormAnalyzer:
                 await apply_stealth(context)
             page = await context.new_page()
 
-            # Navigate and analyze
+            # Navigate
             await page.goto(url, wait_until="networkidle", timeout=30000)
             await page.wait_for_timeout(2000)
 
-            html_content = await page.content()
-            html_content = self._clean_html(html_content)
-            if len(html_content) > 50000:
-                html_content = html_content[:50000]
+            if existing_result:
+                # Skip AI — use the result from the previous analysis
+                result = existing_result
+            else:
+                # Full AI analysis (only when no previous result available)
+                html_content = await page.content()
+                html_content = self._clean_html(html_content)
+                if len(html_content) > 50000:
+                    html_content = html_content[:50000]
 
-            prompt = FORM_ANALYSIS_PROMPT.replace("{html_content}", html_content)
+                prompt = FORM_ANALYSIS_PROMPT.replace("{html_content}", html_content)
 
-            # Stream AI thinking
-            token_buffer = ""
-            last_flush = time.time()
+                # Stream AI thinking
+                token_buffer = ""
+                last_flush = time.time()
 
-            def on_token(token: str):
-                nonlocal token_buffer, last_flush
-                token_buffer += token
-                now = time.time()
-                if now - last_flush >= 0.1:
+                def on_token(token: str):
+                    nonlocal token_buffer, last_flush
+                    token_buffer += token
+                    now = time.time()
+                    if now - last_flush >= 0.1:
+                        self.broadcaster.trigger_analysis(analysis_id, "AiThinking", {
+                            "token": token_buffer,
+                            "done": False,
+                        })
+                        token_buffer = ""
+                        last_flush = now
+
+                result = await self.ollama.parse_json_response_stream(
+                    prompt, on_token=on_token
+                )
+
+                if token_buffer:
                     self.broadcaster.trigger_analysis(analysis_id, "AiThinking", {
                         "token": token_buffer,
                         "done": False,
                     })
-                    token_buffer = ""
-                    last_flush = now
 
-            result = await self.ollama.parse_json_response_stream(
-                prompt, on_token=on_token
-            )
-
-            if token_buffer:
                 self.broadcaster.trigger_analysis(analysis_id, "AiThinking", {
-                    "token": token_buffer,
-                    "done": False,
+                    "token": "",
+                    "done": True,
                 })
 
-            self.broadcaster.trigger_analysis(analysis_id, "AiThinking", {
-                "token": "",
-                "done": True,
-            })
-
-            # Heuristic override
-            has_password = await self._detect_login_heuristic(page)
-            if not has_password:
-                result["page_requires_login"] = False
+                # Heuristic override
+                has_password = await self._detect_login_heuristic(page)
+                if not has_password:
+                    result["page_requires_login"] = False
 
             # Build fields list from analysis result
             fields = []

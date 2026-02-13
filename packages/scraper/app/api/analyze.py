@@ -58,6 +58,7 @@ class InteractiveAnalyzeRequest(BaseModel):
     url: str
     analysis_id: str
     ollama_model: Optional[str] = None
+    analysis_result: Optional[dict] = None
 
 
 @router.post("/analyze/interactive")
@@ -74,6 +75,7 @@ async def analyze_url_interactive(request: InteractiveAnalyzeRequest):
                 url=request.url,
                 analysis_id=request.analysis_id,
                 vnc_manager=vnc_manager,
+                existing_result=request.analysis_result,
             )
             broadcaster.trigger_analysis(request.analysis_id, "AnalysisCompleted", {
                 "result": result,

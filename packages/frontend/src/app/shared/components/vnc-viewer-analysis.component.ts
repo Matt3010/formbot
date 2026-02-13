@@ -87,9 +87,13 @@ export class VncViewerAnalysisComponent {
   confirmed = signal(false);
   resuming = signal(false);
 
-  safeVncUrl = computed(() =>
-    this.sanitizer.bypassSecurityTrustResourceUrl(this.vncUrl())
-  );
+  safeVncUrl = computed(() => {
+    let url = this.vncUrl();
+    if (url && !url.includes('resize=')) {
+      url += (url.includes('?') ? '&' : '?') + 'resize=scale';
+    }
+    return this.sanitizer.bypassSecurityTrustResourceUrl(url);
+  });
 
   onResume() {
     this.resuming.set(true);

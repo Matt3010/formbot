@@ -1,4 +1,4 @@
-import { Component, inject, input, output, signal, OnInit, OnDestroy, ViewChild } from '@angular/core';
+import { Component, inject, input, output, signal, computed, OnInit, OnDestroy, ViewChild } from '@angular/core';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -38,8 +38,14 @@ import { VncStepTabsComponent } from './vnc-step-tabs.component';
       </div>
     } @else if (vncUrl()) {
       <div class="split-view">
-        <!-- VNC Panel (left) -->
-        <div class="vnc-panel" [style.width.%]="splitPosition()">
+        <!-- Mode toolbar (vertical, left edge) -->
+        <app-vnc-mode-toolbar
+          [mode]="currentMode()"
+          (modeChanged)="onModeChanged($event)"
+        />
+
+        <!-- VNC Panel -->
+        <div class="vnc-panel" [style.flex-grow]="splitPosition()">
           <iframe
             [src]="safeVncUrl()"
             class="vnc-iframe"
@@ -49,26 +55,16 @@ import { VncStepTabsComponent } from './vnc-step-tabs.component';
         </div>
 
         <!-- Divider (draggable) -->
-        <div class="divider"
-          (mousedown)="startDrag($event)">
-        </div>
+        <div class="divider" (mousedown)="startDrag($event)"></div>
 
-        <!-- Editor Panel (right) -->
-        <div class="editor-panel" [style.width.%]="100 - splitPosition()">
+        <!-- Editor Panel -->
+        <div class="editor-panel" [style.flex-grow]="100 - splitPosition()">
           <!-- Step tabs for multi-step -->
           <app-vnc-step-tabs
             [steps]="steps()"
             [activeStep]="activeStepIndex()"
             (stepChanged)="onStepChanged($event)"
           />
-
-          <!-- Mode toolbar -->
-          <app-vnc-mode-toolbar
-            [mode]="currentMode()"
-            (modeChanged)="onModeChanged($event)"
-          />
-
-          <mat-divider></mat-divider>
 
           <!-- Field list -->
           <div class="field-list-section">
@@ -137,6 +133,7 @@ import { VncStepTabsComponent } from './vnc-step-tabs.component';
     .vnc-panel {
       position: relative;
       overflow: hidden;
+      min-width: 0;
     }
     .vnc-iframe {
       width: 100%;
@@ -156,6 +153,7 @@ import { VncStepTabsComponent } from './vnc-step-tabs.component';
       flex-direction: column;
       overflow: hidden;
       background: #fafafa;
+      min-width: 0;
     }
     .field-list-section {
       flex: 1;
@@ -202,7 +200,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
 
   loading = signal(true);
   vncUrl = signal<string | null>(null);
-  splitPosition = signal(60);
+  splitPosition = signal(65);
   currentMode = signal<EditorMode>('view');
   steps = signal<EditingStep[]>([]);
   activeStepIndex = signal(0);
@@ -274,9 +272,10 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
     document.removeEventListener('mouseup', this.boundMouseUp);
   }
 
-  safeVncUrl(): SafeResourceUrl {
-    return this.sanitizer.bypassSecurityTrustResourceUrl(this.vncUrl() || '');
-  }
+  safeVncUrl = computed(() => {
+    const url = this.vncUrl() || '';
+    return this.sanitizer.bypassSecurityTrustResourceUrl(url);
+  });
 
   // --- Initialization ---
 
@@ -547,6 +546,31 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
     };
   }
 
+  // --- Divider drag ---
+
+  startDrag(event: MouseEvent) {
+    event.preventDefault();
+    this.isDragging = true;
+    document.addEventListener('mousemove', this.boundMouseMove);
+    document.addEventListener('mouseup', this.boundMouseUp);
+  }
+
+  private onDrag(event: MouseEvent) {
+    if (!this.isDragging) return;
+    const container = (event.target as HTMLElement).closest('.split-view') ||
+                      document.querySelector('.split-view');
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const pct = ((event.clientX - rect.left) / rect.width) * 100;
+    this.splitPosition.set(Math.max(30, Math.min(85, pct)));
+  }
+
+  private stopDrag() {
+    this.isDragging = false;
+    document.removeEventListener('mousemove', this.boundMouseMove);
+    document.removeEventListener('mouseup', this.boundMouseUp);
+  }
+
   private buildFormDefinitions(): FormDefinition[] {
     return this.steps().map((step, i) => ({
       id: `vnc-step-${i}`,
@@ -578,28 +602,4 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
     }));
   }
 
-  // --- Divider drag ---
-
-  startDrag(event: MouseEvent) {
-    event.preventDefault();
-    this.isDragging = true;
-    document.addEventListener('mousemove', this.boundMouseMove);
-    document.addEventListener('mouseup', this.boundMouseUp);
-  }
-
-  private onDrag(event: MouseEvent) {
-    if (!this.isDragging) return;
-    const container = (event.target as HTMLElement).closest('.split-view') ||
-                      document.querySelector('.split-view');
-    if (!container) return;
-    const rect = container.getBoundingClientRect();
-    const pct = ((event.clientX - rect.left) / rect.width) * 100;
-    this.splitPosition.set(Math.max(30, Math.min(80, pct)));
-  }
-
-  private stopDrag() {
-    this.isDragging = false;
-    document.removeEventListener('mousemove', this.boundMouseMove);
-    document.removeEventListener('mouseup', this.boundMouseUp);
-  }
 }
