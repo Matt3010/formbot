@@ -6,6 +6,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { ApiService } from '../../core/services/api.service';
 import { NotificationService } from '../../core/services/notification.service';
+import { finalize } from 'rxjs';
 
 @Component({
   selector: 'app-vnc-viewer',
@@ -45,11 +46,11 @@ import { NotificationService } from '../../core/services/notification.service';
         </mat-checkbox>
         <div class="action-buttons">
           <button mat-raised-button color="primary"
-            [disabled]="!confirmed()"
+            [disabled]="!confirmed() || !!busyAction()"
             (click)="onResume()">
             <mat-icon>play_arrow</mat-icon> Resume Execution
           </button>
-          <button mat-button color="warn" (click)="onAbort()">
+          <button mat-button color="warn" [disabled]="!!busyAction()" (click)="onAbort()">
             <mat-icon>stop</mat-icon> Abort
           </button>
         </div>
@@ -89,9 +90,10 @@ export class VncViewerComponent {
 
   vncUrl = input.required<string>();
   executionId = input.required<string>();
-  resumed = output<void>();
+  action = output<'resumed' | 'aborted'>();
 
   confirmed = signal(false);
+  busyAction = signal<'resume' | 'abort' | null>(null);
 
   safeVncUrl = computed(() => {
     let url = this.vncUrl();
@@ -102,22 +104,32 @@ export class VncViewerComponent {
   });
 
   onResume() {
-    this.api.post(`/executions/${this.executionId()}/resume`).subscribe({
+    if (this.busyAction()) return;
+
+    this.busyAction.set('resume');
+    this.api.post(`/executions/${this.executionId()}/resume`).pipe(
+      finalize(() => this.busyAction.set(null))
+    ).subscribe({
       next: () => {
         this.notify.success('Execution resumed');
         this.confirmed.set(false);
-        this.resumed.emit();
+        this.action.emit('resumed');
       },
       error: () => this.notify.error('Failed to resume execution')
     });
   }
 
   onAbort() {
-    this.api.post(`/executions/${this.executionId()}/abort`).subscribe({
+    if (this.busyAction()) return;
+
+    this.busyAction.set('abort');
+    this.api.post(`/executions/${this.executionId()}/abort`).pipe(
+      finalize(() => this.busyAction.set(null))
+    ).subscribe({
       next: () => {
         this.notify.info('Execution aborted');
         this.confirmed.set(false);
-        this.resumed.emit();
+        this.action.emit('aborted');
       },
       error: () => this.notify.error('Failed to abort execution')
     });

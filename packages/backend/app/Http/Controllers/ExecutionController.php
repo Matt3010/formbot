@@ -9,6 +9,7 @@ use App\Services\ScraperClient;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 class ExecutionController extends Controller
@@ -104,7 +105,7 @@ class ExecutionController extends Controller
     /**
      * Resume execution after manual VNC intervention.
      */
-    public function resume(ExecutionLog $execution): JsonResponse
+    public function resume(ExecutionLog $execution, ScraperClient $scraperClient): JsonResponse
     {
         $execution->load('task');
         $this->authorizeTask($execution->task);
@@ -113,7 +114,6 @@ class ExecutionController extends Controller
             return response()->json(['message' => 'No VNC session for this execution.'], 400);
         }
 
-        $scraperClient = app(ScraperClient::class);
         $result = $scraperClient->resumeVnc($execution->vnc_session_id, (string) $execution->id);
 
         return response()->json($result);
@@ -122,20 +122,43 @@ class ExecutionController extends Controller
     /**
      * Abort execution (stop VNC session).
      */
-    public function abort(ExecutionLog $execution): JsonResponse
+    public function abort(ExecutionLog $execution, ScraperClient $scraperClient): JsonResponse
     {
         $execution->load('task');
         $this->authorizeTask($execution->task);
 
+        if (!in_array($execution->status, ['queued', 'running', 'waiting_manual', 'captcha_blocked', '2fa_required'])) {
+            return response()->json([
+                'message' => 'Only queued or running executions can be aborted.',
+            ], 422);
+        }
+
+        try {
+            $scraperClient->cancelExecution((string) $execution->id);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to cancel execution on scraper; marking execution aborted anyway.', [
+                'execution_id' => (string) $execution->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
         if ($execution->vnc_session_id) {
-            $scraperClient = app(ScraperClient::class);
-            $scraperClient->stopVnc($execution->vnc_session_id);
+            try {
+                $scraperClient->stopVnc($execution->vnc_session_id);
+            } catch (\Throwable $e) {
+                Log::warning('Failed to stop VNC session on abort; marking execution aborted anyway.', [
+                    'execution_id' => (string) $execution->id,
+                    'vnc_session_id' => $execution->vnc_session_id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
 
         $execution->update([
             'status' => 'failed',
             'error_message' => 'Aborted by user',
             'completed_at' => now(),
+            'vnc_session_id' => null,
         ]);
 
         return response()->json(['message' => 'Execution aborted.']);

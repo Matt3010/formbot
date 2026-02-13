@@ -142,7 +142,7 @@ async def test_execute_simple_single_form(mock_db, mock_vnc_manager):
 
     page = _make_mock_page()
     browser = _make_mock_browser(_make_mock_context(page))
-    pw_patch, stealth_patch, context = _build_executor_patches(page, browser)
+    pw_patch, stealth_patch, _ = _build_executor_patches(page, browser)
 
     with pw_patch, stealth_patch:
         from app.services.task_executor import TaskExecutor
@@ -431,9 +431,48 @@ async def test_execute_vnc_timeout_fails(mock_db):
         result = await executor.execute(str(task_id))
 
     assert result["status"] == "failed"
-    assert "VNC timeout" in result["error"]
+    assert "timed out" in result["error"]
 
     # VNC session cleaned up via finally block
+    vnc_mock.stop_session.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_execute_vnc_aborted_by_user_fails(mock_db):
+    """When VNC session is stopped (abort), execution fails with abort reason."""
+    task_id = uuid.uuid4()
+    fd_id = uuid.uuid4()
+
+    task = make_task(id=task_id)
+    form_def = make_form_definition(
+        id=fd_id, task_id=task_id, step_order=1,
+        page_url="https://example.com/captcha",
+        form_selector="#form", submit_selector="#submit",
+        captcha_detected=True, two_factor_expected=False,
+    )
+
+    _setup_db_for_task(mock_db, task, [form_def], {fd_id: []})
+
+    page = _make_mock_page()
+    browser = _make_mock_browser(_make_mock_context(page))
+    pw_patch, stealth_patch, context = _build_executor_patches(page, browser)
+
+    vnc_mock = _make_two_phase_vnc_mock()
+    vnc_mock.wait_for_resume = AsyncMock(return_value="stopped")
+
+    broadcaster_patch = patch(
+        "app.services.task_executor.Broadcaster.get_instance",
+        return_value=MagicMock(),
+    )
+
+    with pw_patch, stealth_patch, broadcaster_patch:
+        from app.services.task_executor import TaskExecutor
+
+        executor = TaskExecutor(db=mock_db, vnc_manager=vnc_mock)
+        result = await executor.execute(str(task_id))
+
+    assert result["status"] == "failed"
+    assert "aborted by user" in result["error"].lower()
     vnc_mock.stop_session.assert_awaited_once()
 
 

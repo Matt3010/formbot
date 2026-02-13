@@ -230,6 +230,10 @@ class ExecutionTest extends TestCase
         ]);
 
         $mockScraperClient = Mockery::mock(ScraperClient::class);
+        $mockScraperClient->shouldReceive('cancelExecution')
+            ->once()
+            ->with((string) $execution->id)
+            ->andReturn(['status' => 'cancelled']);
         $mockScraperClient->shouldReceive('stopVnc')
             ->once()
             ->with('vnc-session-456')
@@ -248,12 +252,24 @@ class ExecutionTest extends TestCase
         $this->assertNotNull($execution->completed_at);
     }
 
-    public function test_abort_execution_without_vnc_session(): void
+    public function test_abort_execution_marks_failed_even_when_vnc_stop_fails(): void
     {
         $execution = $this->createExecution([
             'status' => 'running',
-            'vnc_session_id' => null,
+            'vnc_session_id' => 'vnc-session-789',
         ]);
+
+        $mockScraperClient = Mockery::mock(ScraperClient::class);
+        $mockScraperClient->shouldReceive('cancelExecution')
+            ->once()
+            ->with((string) $execution->id)
+            ->andReturn(['status' => 'cancelled']);
+        $mockScraperClient->shouldReceive('stopVnc')
+            ->once()
+            ->with('vnc-session-789')
+            ->andThrow(new \RuntimeException('scraper unavailable'));
+
+        $this->app->instance(ScraperClient::class, $mockScraperClient);
 
         $response = $this->postJson("/api/executions/{$execution->id}/abort");
 
@@ -263,6 +279,83 @@ class ExecutionTest extends TestCase
         $execution->refresh();
         $this->assertEquals('failed', $execution->status);
         $this->assertEquals('Aborted by user', $execution->error_message);
+        $this->assertNull($execution->vnc_session_id);
+        $this->assertNotNull($execution->completed_at);
+    }
+
+    public function test_abort_execution_marks_failed_even_when_cancel_execution_fails(): void
+    {
+        $execution = $this->createExecution([
+            'status' => 'running',
+            'vnc_session_id' => null,
+        ]);
+
+        $mockScraperClient = Mockery::mock(ScraperClient::class);
+        $mockScraperClient->shouldReceive('cancelExecution')
+            ->once()
+            ->with((string) $execution->id)
+            ->andThrow(new \RuntimeException('cancel endpoint unavailable'));
+
+        $this->app->instance(ScraperClient::class, $mockScraperClient);
+
+        $response = $this->postJson("/api/executions/{$execution->id}/abort");
+
+        $response->assertStatus(200)
+            ->assertJsonPath('message', 'Execution aborted.');
+
+        $execution->refresh();
+        $this->assertEquals('failed', $execution->status);
+        $this->assertEquals('Aborted by user', $execution->error_message);
+        $this->assertNull($execution->vnc_session_id);
+        $this->assertNotNull($execution->completed_at);
+    }
+
+    public function test_abort_execution_without_vnc_session(): void
+    {
+        $execution = $this->createExecution([
+            'status' => 'running',
+            'vnc_session_id' => null,
+        ]);
+
+        $mockScraperClient = Mockery::mock(ScraperClient::class);
+        $mockScraperClient->shouldReceive('cancelExecution')
+            ->once()
+            ->with((string) $execution->id)
+            ->andReturn(['status' => 'cancelled']);
+
+        $this->app->instance(ScraperClient::class, $mockScraperClient);
+
+        $response = $this->postJson("/api/executions/{$execution->id}/abort");
+
+        $response->assertStatus(200)
+            ->assertJsonPath('message', 'Execution aborted.');
+
+        $execution->refresh();
+        $this->assertEquals('failed', $execution->status);
+        $this->assertEquals('Aborted by user', $execution->error_message);
+    }
+
+    public function test_abort_completed_execution_returns_422(): void
+    {
+        $execution = $this->createExecution([
+            'status' => 'success',
+            'completed_at' => now()->subMinute(),
+            'vnc_session_id' => null,
+        ]);
+
+        $mockScraperClient = Mockery::mock(ScraperClient::class);
+        $mockScraperClient->shouldNotReceive('cancelExecution');
+        $mockScraperClient->shouldNotReceive('stopVnc');
+        $this->app->instance(ScraperClient::class, $mockScraperClient);
+
+        $response = $this->postJson("/api/executions/{$execution->id}/abort");
+
+        $response->assertStatus(422)
+            ->assertJsonPath('message', 'Only queued or running executions can be aborted.');
+
+        $execution->refresh();
+        $this->assertEquals('success', $execution->status);
+        $this->assertNull($execution->error_message);
     }
 
     // -----------------------------------------------------------------

@@ -36,6 +36,33 @@ async def analyze_url_interactive(request: InteractiveAnalyzeRequest):
         vnc_session_id = None
         browser = None
         pw = None
+        h_registry = HighlighterRegistry.get_instance()
+
+        async def _cleanup_interactive_session():
+            """Best-effort cleanup for browser/highlighter/VNC resources."""
+            session = h_registry.get(request.analysis_id)
+            if session:
+                try:
+                    await h_registry.cleanup_session(request.analysis_id)
+                except Exception:
+                    pass
+            else:
+                if browser:
+                    try:
+                        await browser.close()
+                    except Exception:
+                        pass
+                if pw:
+                    try:
+                        await pw.__aexit__(None, None, None)
+                    except Exception:
+                        pass
+
+            if vnc_session_id and vnc_manager:
+                try:
+                    await vnc_manager.stop_session(vnc_session_id)
+                except Exception:
+                    pass
 
         try:
             # Reserve display for headed browser
@@ -99,7 +126,6 @@ async def analyze_url_interactive(request: InteractiveAnalyzeRequest):
                 vnc_session_id=vnc_session_id,
                 fields=fields,
             )
-            h_registry = HighlighterRegistry.get_instance()
             await h_registry.register(session)
 
             # Broadcast HighlightingReady
@@ -113,6 +139,7 @@ async def analyze_url_interactive(request: InteractiveAnalyzeRequest):
             return result
 
         except asyncio.CancelledError:
+            await _cleanup_interactive_session()
             broadcaster.trigger_analysis(request.analysis_id, "AnalysisCompleted", {
                 "result": {},
                 "error": "Cancelled by user",
@@ -122,22 +149,7 @@ async def analyze_url_interactive(request: InteractiveAnalyzeRequest):
             import traceback
             print(f"[INTERACTIVE_ANALYSIS] EXCEPTION: {e}\n{traceback.format_exc()}", flush=True)
 
-            # On error, clean up browser
-            if browser:
-                try:
-                    await browser.close()
-                except Exception:
-                    pass
-            if pw:
-                try:
-                    await pw.__aexit__(None, None, None)
-                except Exception:
-                    pass
-            if vnc_session_id and vnc_manager:
-                try:
-                    await vnc_manager.stop_session(vnc_session_id)
-                except Exception:
-                    pass
+            await _cleanup_interactive_session()
 
             broadcaster.trigger_analysis(request.analysis_id, "AnalysisCompleted", {
                 "result": {},

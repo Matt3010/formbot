@@ -152,7 +152,7 @@ import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog.c
           <app-vnc-viewer
             [vncUrl]="vncUrl()!"
             [executionId]="vncExecutionId()!"
-            (resumed)="onVncResumed()"
+            (action)="onVncAction($event)"
           />
         }
 
@@ -260,7 +260,7 @@ export class TaskDetailComponent implements OnInit, OnDestroy {
 
         if (data.vnc_url) {
           this.vncUrl.set(data.vnc_url);
-          this.vncExecutionId.set(data.execution_id);
+          this.vncExecutionId.set(data.execution_id || null);
           this.executionStatus.set(`Waiting for manual intervention (${data.reason})...`);
           window.scrollTo({ top: 0, behavior: 'smooth' });
         }
@@ -305,7 +305,11 @@ export class TaskDetailComponent implements OnInit, OnDestroy {
         break;
       case 'failed':
         this.executionStatus.set(null);
-        this.notify.error(data.error || 'Execution failed');
+        if (data.error?.toLowerCase().includes('aborted by user')) {
+          this.notify.info('Execution aborted');
+        } else {
+          this.notify.error(data.error || 'Execution failed');
+        }
         this.loadTask(this.task()!.id);
         break;
       default:
@@ -409,11 +413,21 @@ export class TaskDetailComponent implements OnInit, OnDestroy {
     });
   }
 
-  onVncResumed() {
-    this.vncUrl.set(null);
-    this.vncExecutionId.set(null);
+  onVncAction(action: 'resumed' | 'aborted') {
+    this.clearVncPanel();
+    if (action === 'aborted') {
+      this.executionStatus.set('Execution aborted.');
+      this.loadTask(this.task()!.id);
+      return;
+    }
+
     this.executionStatus.set('Resumed, continuing execution...');
     this.loadTask(this.task()!.id);
+  }
+
+  private clearVncPanel() {
+    this.vncUrl.set(null);
+    this.vncExecutionId.set(null);
   }
 
   onOpenVnc(event: { vncUrl: string; executionId: string }) {

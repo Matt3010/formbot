@@ -8,8 +8,10 @@ from typing import Optional
 from app.services.highlighter_registry import HighlighterRegistry
 from app.services.broadcaster import Broadcaster
 from app.services.field_highlighter import FieldHighlighter
+from app.api.vnc import get_vnc_manager
 
 router = APIRouter(prefix="/editing")
+MANUAL_INTERVENTION_TIMEOUT_SECONDS = 1800
 
 
 class SetModeRequest(BaseModel):
@@ -125,6 +127,8 @@ async def cancel_editing(request: SessionRequest):
     """User cancelled editing. Signal the session."""
     session = _get_session(request.analysis_id)
     session.cancelled_event.set()
+    # Unblock any pending manual wait immediately.
+    session.resume_event.set()
     return {"status": "cancelled", "analysis_id": request.analysis_id}
 
 
@@ -135,6 +139,13 @@ async def cleanup_editing(request: SessionRequest):
     session = registry.get(request.analysis_id)
     if not session:
         return {"status": "not_found"}
+
+    if session.vnc_session_id:
+        try:
+            vnc_manager = get_vnc_manager()
+            await vnc_manager.stop_session(session.vnc_session_id)
+        except Exception:
+            pass
 
     await registry.cleanup_session(request.analysis_id)
     return {"status": "cleaned_up", "analysis_id": request.analysis_id}
@@ -192,13 +203,22 @@ async def execute_login(request: ExecuteLoginRequest):
                 "needs_vnc": True,
             })
             session.resume_event.clear()
-            await session.resume_event.wait()
+            deadline = asyncio.get_running_loop().time() + MANUAL_INTERVENTION_TIMEOUT_SECONDS
+            while True:
+                if session.cancelled_event.is_set():
+                    raise RuntimeError("Cancelled by user")
+                if session.resume_event.is_set():
+                    break
+                if asyncio.get_running_loop().time() >= deadline:
+                    raise TimeoutError("Manual intervention timed out")
+                await asyncio.sleep(0.1)
             try:
                 await page.wait_for_load_state("networkidle", timeout=15000)
             except Exception:
                 await page.wait_for_timeout(3000)
 
         try:
+            session.cancelled_event.clear()
             # Phase: filling
             broadcaster.trigger_analysis(analysis_id, "LoginExecutionProgress", {
                 "phase": "filling",

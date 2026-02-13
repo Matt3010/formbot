@@ -26,12 +26,12 @@ class TaskExecutor:
         if hasattr(self, '_user_id') and self._user_id and hasattr(self, '_execution_id') and self._execution_id:
             self.broadcaster.trigger_execution(self._user_id, str(self._execution_id), event, data)
 
-    async def _vnc_pause(self, execution, steps_log, step_info, reason: str, browser) -> bool:
+    async def _vnc_pause(self, execution, steps_log, step_info, reason: str, browser) -> str | None:
         """Activate VNC viewer and wait for user to resume.
 
         Uses the pre-reserved display session and activates x11vnc + websockify
         so the user can see and interact with the browser.
-        Returns True if resumed successfully, False if timed out.
+        Returns None if resumed successfully, otherwise an error message.
         """
         # Activate VNC on the reserved display (starts x11vnc + websockify)
         session_id = self._vnc_session_id
@@ -62,11 +62,24 @@ class TaskExecutor:
         })
 
         # WAIT for user to complete manual action and click resume
-        resumed = await self.vnc_manager.wait_for_resume(session_id, timeout=3600)
+        wait_result = await self.vnc_manager.wait_for_resume(session_id, timeout=3600)
+        if wait_result is True:
+            wait_state = "resumed"
+        elif wait_result is False:
+            wait_state = "timeout"
+        elif isinstance(wait_result, str):
+            wait_state = wait_result
+        else:
+            wait_state = "timeout"
 
-        if not resumed:
+        if wait_state != "resumed":
+            failure_message = (
+                f'Execution aborted by user during manual intervention ({reason})'
+                if wait_state == "stopped"
+                else f'VNC session timed out waiting for manual intervention ({reason})'
+            )
             execution.status = 'failed'
-            execution.error_message = f'VNC session timed out waiting for manual intervention ({reason})'
+            execution.error_message = failure_message
             execution.completed_at = datetime.utcnow()
             execution.steps_log = steps_log
             self.db.commit()
@@ -74,11 +87,11 @@ class TaskExecutor:
             self._broadcast("execution.failed", {
                 "task_id": str(execution.task_id),
                 "status": "failed",
-                "error": execution.error_message,
+                "error": failure_message,
             })
 
             await browser.close()
-            return False
+            return failure_message
 
         # User resumed - kill x11vnc and revoke token, keep Xvfb (browser still needs it)
         self.vnc_manager.deactivate_vnc(session_id)
@@ -97,7 +110,7 @@ class TaskExecutor:
             "reason": reason,
         })
 
-        return True
+        return None
 
     async def execute(self, task_id: str, execution_id: str = None,
                       is_dry_run: bool = False,
@@ -223,14 +236,14 @@ class TaskExecutor:
 
                     # Pre-submit VNC pause: CAPTCHA (user solves captcha before fields are filled)
                     if form_def.captcha_detected:
-                        resumed = await self._vnc_pause(
+                        pause_error = await self._vnc_pause(
                             execution, steps_log, step_info, "captcha", browser
                         )
-                        if not resumed:
+                        if pause_error:
                             return {
                                 "execution_id": str(execution.id),
                                 "status": "failed",
-                                "error": "VNC timeout (captcha)"
+                                "error": pause_error,
                             }
 
                     # Fill form fields
@@ -290,14 +303,14 @@ class TaskExecutor:
 
                     # Human breakpoint: pause for manual review after filling
                     if form_def.human_breakpoint:
-                        resumed = await self._vnc_pause(
+                        pause_error = await self._vnc_pause(
                             execution, steps_log, step_info, "breakpoint", browser
                         )
-                        if not resumed:
+                        if pause_error:
                             return {
                                 "execution_id": str(execution.id),
                                 "status": "failed",
-                                "error": "VNC timeout (breakpoint)"
+                                "error": pause_error,
                             }
 
                     # Check if this is the last step and dry run
@@ -361,14 +374,14 @@ class TaskExecutor:
                             "status": "started",
                             "timestamp": datetime.utcnow().isoformat()
                         }
-                        resumed = await self._vnc_pause(
+                        pause_error = await self._vnc_pause(
                             execution, steps_log, tfa_step_info, "2fa", browser
                         )
-                        if not resumed:
+                        if pause_error:
                             return {
                                 "execution_id": str(execution.id),
                                 "status": "failed",
-                                "error": "VNC timeout (2fa)"
+                                "error": pause_error,
                             }
 
                 # Take final screenshot

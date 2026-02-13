@@ -145,6 +145,23 @@ class ScraperClient
     }
 
     /**
+     * Cancel a running execution in the scraper.
+     */
+    public function cancelExecution(string $executionId): array
+    {
+        $response = Http::timeout(30)
+            ->post("{$this->baseUrl}/execute/{$executionId}/cancel");
+
+        if (!$response->successful()) {
+            throw new \RuntimeException(
+                'Failed to cancel execution: ' . ($response->json('detail') ?? $response->body())
+            );
+        }
+
+        return $response->json();
+    }
+
+    /**
      * Resume execution after manual VNC intervention.
      */
     public function resumeVnc(string $sessionId, string $executionId): array

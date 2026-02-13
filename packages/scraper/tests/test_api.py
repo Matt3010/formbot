@@ -1,5 +1,6 @@
 """Tests for FastAPI endpoints (execute, validate, health, VNC)."""
 
+import asyncio
 import uuid
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -22,6 +23,17 @@ def _get_app():
     return app
 
 
+@pytest.fixture(autouse=True)
+def _clear_execute_state():
+    """Keep execute endpoint globals isolated between tests."""
+    from app.api.execute import _execution_results, _running_executions
+    _execution_results.clear()
+    _running_executions.clear()
+    yield
+    _execution_results.clear()
+    _running_executions.clear()
+
+
 # ---------------------------------------------------------------------------
 # POST /execute
 # ---------------------------------------------------------------------------
@@ -30,7 +42,11 @@ def _get_app():
 @pytest.mark.asyncio
 async def test_execute_endpoint_starts_background():
     """POST /execute returns immediately with status=started."""
-    with patch("app.api.execute.asyncio.create_task") as mock_create_task:
+    def _fake_create_task(coro):
+        coro.close()
+        return MagicMock()
+
+    with patch("app.api.execute.asyncio.create_task", side_effect=_fake_create_task) as mock_create_task:
         app = _get_app()
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as ac:
@@ -51,7 +67,11 @@ async def test_execute_endpoint_starts_background():
 @pytest.mark.asyncio
 async def test_execute_endpoint_with_all_options():
     """POST /execute accepts all optional parameters."""
-    with patch("app.api.execute.asyncio.create_task"):
+    def _fake_create_task(coro):
+        coro.close()
+        return MagicMock()
+
+    with patch("app.api.execute.asyncio.create_task", side_effect=_fake_create_task):
         app = _get_app()
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as ac:
@@ -66,6 +86,38 @@ async def test_execute_endpoint_with_all_options():
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "started"
+
+
+@pytest.mark.asyncio
+async def test_execute_endpoint_already_running():
+    """POST /execute returns already_running when same execution is in progress."""
+    from app.api.execute import _running_executions
+
+    execution_id = "exec-already-running"
+    blocker = asyncio.Event()
+    running_task = asyncio.create_task(blocker.wait())
+    _running_executions[execution_id] = running_task
+
+    try:
+        with patch("app.api.execute.asyncio.create_task") as mock_create_task:
+            app = _get_app()
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as ac:
+                response = await ac.post("/execute", json={
+                    "task_id": str(uuid.uuid4()),
+                    "execution_id": execution_id,
+                })
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "already_running"
+        mock_create_task.assert_not_called()
+    finally:
+        running_task.cancel()
+        try:
+            await running_task
+        except asyncio.CancelledError:
+            pass
 
 
 @pytest.mark.asyncio
@@ -111,6 +163,46 @@ async def test_execute_status_completed():
         assert task_id not in _execution_results
     finally:
         _execution_results.pop(task_id, None)
+
+
+@pytest.mark.asyncio
+async def test_execute_cancel_running_execution():
+    """POST /execute/{execution_id}/cancel cancels a running execution task."""
+    from app.api.execute import _running_executions
+
+    execution_id = "exec-cancel-123"
+    blocker = asyncio.Event()
+    running_task = asyncio.create_task(blocker.wait())
+    _running_executions[execution_id] = running_task
+
+    app = _get_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        response = await ac.post(f"/execute/{execution_id}/cancel")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "cancelled"
+    assert data["execution_id"] == execution_id
+
+    try:
+        await running_task
+    except asyncio.CancelledError:
+        pass
+
+
+@pytest.mark.asyncio
+async def test_execute_cancel_not_found():
+    """POST /execute/{execution_id}/cancel returns not_found when missing."""
+    app = _get_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        response = await ac.post("/execute/nonexistent-exec/cancel")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "not_found"
+    assert data["execution_id"] == "nonexistent-exec"
 
 
 # ---------------------------------------------------------------------------

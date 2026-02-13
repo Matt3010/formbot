@@ -8,6 +8,7 @@ import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { Subscription, Subject, debounceTime } from 'rxjs';
 import { WebSocketService } from '../../../core/services/websocket.service';
 import { VncEditorService } from '../../../core/services/vnc-editor.service';
+import { NotificationService } from '../../../core/services/notification.service';
 import { FormDefinition } from '../../../core/models/task.model';
 import {
   EditorMode, EditorPhase, EditorField, EditingStep, UserCorrections,
@@ -137,6 +138,9 @@ import { VncStepTabsComponent } from './vnc-step-tabs.component';
                   <mat-icon>play_arrow</mat-icon> Resume
                 </button>
               }
+              <button mat-stroked-button color="warn" (click)="onCancel()">
+                <mat-icon>close</mat-icon> Cancel
+              </button>
             } @else {
               <button mat-raised-button color="primary" (click)="onConfirmAll()" [disabled]="confirming()">
                 @if (confirming()) {
@@ -264,6 +268,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
   private sanitizer = inject(DomSanitizer);
   private ws = inject(WebSocketService);
   private editorService = inject(VncEditorService);
+  private notify = inject(NotificationService);
   private subs: Subscription[] = [];
   private draftSave$ = new Subject<void>();
   private fillField$ = new Subject<{ fieldIndex: number; value: string }>();
@@ -372,10 +377,6 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
         this.currentPhase.set('login');
       }
     });
-
-    this.subs.push(
-      channel // keep reference for cleanup
-    );
 
     // Debounced draft auto-save
     this.subs.push(
@@ -825,6 +826,8 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
   }
 
   onCancel() {
+    this.loginExecuting.set(false);
+    this.captchaWaiting.set(false);
     this.editorService.cancelEditing(this.analysisId()).subscribe({
       next: () => this.cancelled.emit(),
       error: () => this.cancelled.emit(),
@@ -843,7 +846,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
   private handleSessionError(err: any) {
     if (err.status === 404 && !this.sessionExpired) {
       this.sessionExpired = true;
-      alert('VNC session expired or lost. The editor will close.');
+      this.notify.warn('VNC session expired or lost. Closing visual editor.');
       this.cancelled.emit();
     }
   }

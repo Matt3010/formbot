@@ -300,16 +300,22 @@ class VNCManager:
         result = await self.activate_vnc(session_id)
         return result
 
-    async def wait_for_resume(self, session_id: str, timeout: float = 3600) -> bool:
-        """Wait for resume signal. Returns True if resumed, False if timed out."""
+    async def wait_for_resume(self, session_id: str, timeout: float = 3600) -> str:
+        """Wait for a resume signal.
+
+        Returns one of:
+        - "resumed" when user explicitly resumes
+        - "stopped" when session is aborted/stopped
+        - "timeout" when no signal is received in time
+        """
         session = self.sessions.get(session_id)
         if not session:
-            return False
+            return "stopped"
         try:
             await asyncio.wait_for(session["resume_event"].wait(), timeout=timeout)
-            return True
+            return "resumed" if session.get("status") == "resumed" else "stopped"
         except asyncio.TimeoutError:
-            return False
+            return "timeout"
 
     async def resume_session(self, session_id: str, execution_id: str) -> dict:
         """Signal the execution to resume after manual VNC intervention."""
