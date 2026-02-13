@@ -14,8 +14,10 @@ return new class extends Migration
             $table->text('url');
             $table->text('target_url')->nullable();
             $table->text('login_url')->nullable();
-            $table->enum('type', ['simple', 'login_and_target', 'next_page']);
-            $table->enum('status', ['pending', 'analyzing', 'completed', 'failed', 'cancelled', 'timed_out'])->default('pending');
+            // Keep initial enum values aligned with current app behavior for SQLite.
+            // Later migrations still adjust PostgreSQL constraints for existing installs.
+            $table->enum('type', ['simple', 'login_and_target', 'next_page', 'manual']);
+            $table->enum('status', ['pending', 'analyzing', 'completed', 'failed', 'cancelled', 'timed_out', 'editing'])->default('pending');
             $table->jsonb('result')->nullable();
             $table->text('error')->nullable();
             $table->string('model', 100)->nullable();
