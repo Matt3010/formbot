@@ -8,7 +8,7 @@ quando si clicca su un campo già selezionato, in modo da evitare di dover selez
 
 Sistemare la UI per la gestione degli strumenti che appare verticale. Il layout si estende orizzontalmente.
 
-Controllare cosa significa campo "Is required".
+Controllare cosa significa campo "Is required" di un field.
 
 Dopo aver cliccato "Confirm Login & Proceed", sistemare l'aggiornamento della UI.
 Submitting login form... rimane attivo troppo tempo e non dovrebbe funzionare con un timeout ma con i socket on page load.
