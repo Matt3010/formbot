@@ -2,7 +2,6 @@
 
 namespace App\Jobs;
 
-use App\Events\CaptchaDetected;
 use App\Events\ExecutionCompleted;
 use App\Events\ExecutionStarted;
 use App\Events\TaskStatusChanged;

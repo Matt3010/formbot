@@ -284,7 +284,7 @@ class EditingController extends Controller
     }
 
     /**
-     * Resume login execution after manual CAPTCHA/2FA intervention.
+     * Resume login execution after manual intervention.
      */
     public function resumeLogin(Analysis $analysis, ScraperClient $scraperClient): JsonResponse
     {

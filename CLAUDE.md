@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-FormBot automates form submissions on external websites using a manual VNC-based field selection editor, multi-step flows, CAPTCHA/2FA manual intervention via noVNC, and scheduled execution.
+FormBot automates form submissions on external websites using a manual VNC-based field selection editor, multi-step flows, manual intervention via noVNC, and scheduled execution.
 
 ## Common Commands
 
@@ -67,12 +67,12 @@ Frontend (real-time updates)
 - **Backend → Scraper**: HTTP calls via `ScraperClient` (600s timeout). All heavy work (Playwright browsing, VNC sessions) happens in the scraper.
 - **Async processing**: Backend dispatches jobs (`ExecuteTaskJob`, etc.) to Redis queue. Queue worker picks them up and calls the scraper.
 - **Real-time updates**: Scraper broadcasts events via Pusher SDK → Soketi → Frontend WebSocket. Events include `HighlightingReady`, `FieldSelected`, `FieldAdded`, `TaskStatusChanged`, execution step progress.
-- **VNC**: Scraper runs Xvfb + x11vnc + websockify for manual field selection and CAPTCHA/2FA intervention. Token-based routing on port 6080.
+- **VNC**: Scraper runs Xvfb + x11vnc + websockify for manual field selection and manual intervention. Token-based routing on port 6080.
 
 ### Key Services
 
 **Scraper** (`packages/scraper/app/services/`):
-- `TaskExecutor` — Playwright-based form filling with stealth mode, multi-step flows, CAPTCHA/2FA via VNC
+- `TaskExecutor` — Playwright-based form filling with stealth mode, multi-step flows, manual intervention via VNC
 - `FieldHighlighter` — Injects highlight.js into VNC browser pages for interactive field selection (view/select/add/remove modes)
 - `HighlighterRegistry` — Singleton managing active VNC editing sessions
 - `VNCManager` — Manages Xvfb/x11vnc display sessions with token-based websockify routing
@@ -135,7 +135,7 @@ Do this **before committing**. A commit with broken tests is not acceptable.
 - The scraper uses `host.docker.internal` to access the test-site from inside Docker.
 - Sensitive form field values are encrypted at rest via `CryptoService` / `ENCRYPTION_KEY`.
 - Field selection is fully manual via the VNC editor — no AI detection. Users click on fields in the live browser to add them.
-- CAPTCHA/2FA handling is user-specified: users set `captcha_detected`, `two_factor_expected`, or `human_breakpoint` flags during task setup. The executor pauses and opens VNC for manual intervention when these flags are set.
+- Manual intervention (CAPTCHA/2FA/human verification) is handled via the `human_breakpoint` flag. When set, the executor pauses and opens VNC for manual user action before continuing.
 
 ## E2E Verification
 

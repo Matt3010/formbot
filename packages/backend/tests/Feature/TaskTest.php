@@ -418,9 +418,6 @@ class TaskTest extends TestCase
                 'form_type' => 'target',
                 'form_selector' => '#legacy-form',
                 'submit_selector' => '#submit',
-                'ai_confidence' => 0.99,
-                'captcha_detected' => true,
-                'two_factor_expected' => true,
                 'form_fields' => [[
                     'field_name' => 'email',
                     'field_type' => 'email',
@@ -591,9 +588,6 @@ class TaskTest extends TestCase
                 'form_type' => 'target',
                 'form_selector' => '#updated-form',
                 'submit_selector' => '#updated-submit',
-                'ai_confidence' => 0.75,
-                'captcha_detected' => false,
-                'two_factor_expected' => false,
                 'form_fields' => [[
                     'field_name' => 'updated_email',
                     'field_type' => 'email',
@@ -907,9 +901,6 @@ class TaskTest extends TestCase
                 'form_type' => 'target',
                 'form_selector' => '#import-legacy-form',
                 'submit_selector' => '#submit',
-                'ai_confidence' => 0.84,
-                'captcha_detected' => false,
-                'two_factor_expected' => false,
                 'form_fields' => [[
                     'field_name' => 'email',
                     'field_type' => 'email',

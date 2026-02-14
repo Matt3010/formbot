@@ -353,7 +353,7 @@ async def test_execute_dry_run(mock_db, mock_vnc_manager):
 
 @pytest.mark.asyncio
 async def test_execute_captcha_triggers_vnc_pause(mock_db):
-    """When human_breakpoint=True, a VNC pause is triggered before submit."""
+    """When human_breakpoint=True, a VNC pause is triggered for manual intervention."""
     task_id = uuid.uuid4()
     fd_id = uuid.uuid4()
 
@@ -406,7 +406,7 @@ async def test_execute_captcha_triggers_vnc_pause(mock_db):
 
 @pytest.mark.asyncio
 async def test_execute_2fa_triggers_post_submit_vnc(mock_db):
-    """When human_breakpoint=True, VNC pause is triggered during execution."""
+    """When human_breakpoint=True, VNC pause is triggered for manual intervention during execution."""
     task_id = uuid.uuid4()
     fd_id = uuid.uuid4()
 
@@ -444,10 +444,10 @@ async def test_execute_2fa_triggers_post_submit_vnc(mock_db):
 
     assert result["status"] == "success"
 
-    # Submit was clicked (2FA pause is POST-submit)
+    # Submit was clicked (manual intervention pause is POST-submit)
     page.click.assert_awaited_once_with("#submit")
 
-    # VNC display was reserved and activated for 2FA
+    # VNC display was reserved and activated for manual intervention
     vnc_mock.reserve_display.assert_awaited_once()
     vnc_mock.activate_vnc.assert_awaited_once()
     vnc_mock.wait_for_resume.assert_awaited_once()
@@ -903,7 +903,7 @@ async def test_execute_dry_run_multi_step(mock_db, mock_vnc_manager):
 
 @pytest.mark.asyncio
 async def test_no_duplicate_step_in_steps_log_after_captcha(mock_db):
-    """After captcha is resolved, steps_log should contain exactly one entry
+    """After manual intervention is resolved, steps_log should contain exactly one entry
     per step — no duplicates from _vnc_pause + main loop both appending.
 
     Regression test for: _vnc_pause appended step_info to steps_log, then
@@ -1006,7 +1006,7 @@ async def test_vnc_cleanup_on_execution_exception(mock_db):
     assert result["status"] == "failed"
     assert "DNS resolution failed" in result["error"]
 
-    # VNC display was reserved (needs_vnc=True due to captcha)
+    # VNC display was reserved (needs_vnc=True due to human_breakpoint)
     vnc_mock.reserve_display.assert_awaited_once()
 
     # VNC session is cleaned up by the finally block

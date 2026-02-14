@@ -113,8 +113,6 @@ import { ScreenshotViewerComponent } from '../../shared/components/screenshot-vi
     .border-running { border-left-color: #2196f3 !important; }
     .border-queued { border-left-color: #9e9e9e !important; }
     .border-waiting_manual { border-left-color: #ff9800 !important; }
-    .border-captcha_blocked { border-left-color: #ff5722 !important; }
-    .border-2fa_required { border-left-color: #9c27b0 !important; }
     .border-dry_run_ok { border-left-color: #8bc34a !important; }
     .status-icon.success { color: #4caf50; }
     .status-icon.failed { color: #f44336; }
@@ -128,8 +126,6 @@ import { ScreenshotViewerComponent } from '../../shared/components/screenshot-vi
     .status-running { background-color: #2196f3 !important; color: white !important; }
     .status-queued { background-color: #9e9e9e !important; color: white !important; }
     .status-waiting_manual { background-color: #ff9800 !important; color: white !important; }
-    .status-captcha_blocked { background-color: #ff5722 !important; color: white !important; }
-    .status-2fa_required { background-color: #9c27b0 !important; color: white !important; }
     .status-dry_run_ok { background-color: #8bc34a !important; color: white !important; }
     .error-message { color: #f44336; font-size: 13px; display: flex; align-items: center; gap: 4px; }
     .retry-info { color: #666; font-size: 13px; display: flex; align-items: center; gap: 4px; }
@@ -217,8 +213,6 @@ export class ExecutionLogComponent implements OnInit, OnChanges {
       'waiting_manual': 'front_hand',
       'success': 'check_circle',
       'failed': 'cancel',
-      'captcha_blocked': 'block',
-      '2fa_required': 'security',
       'dry_run_ok': 'science',
     };
     return icons[status] || 'help';

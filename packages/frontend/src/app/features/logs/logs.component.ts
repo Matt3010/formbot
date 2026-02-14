@@ -62,7 +62,6 @@ import { ScreenshotViewerComponent } from '../../shared/components/screenshot-vi
                 <mat-option value="success">Success</mat-option>
                 <mat-option value="failed">Failed</mat-option>
                 <mat-option value="waiting_manual">Waiting Manual</mat-option>
-                <mat-option value="captcha_blocked">Captcha Blocked</mat-option>
                 <mat-option value="dry_run_ok">Dry Run OK</mat-option>
               </mat-select>
             </mat-form-field>
@@ -174,7 +173,6 @@ import { ScreenshotViewerComponent } from '../../shared/components/screenshot-vi
     .status-running { background-color: #2196f3 !important; color: white !important; }
     .status-queued { background-color: #9e9e9e !important; color: white !important; }
     .status-waiting_manual { background-color: #ff9800 !important; color: white !important; }
-    .status-captcha_blocked { background-color: #ff5722 !important; color: white !important; }
     .status-dry_run_ok { background-color: #8bc34a !important; color: white !important; }
   `]
 })

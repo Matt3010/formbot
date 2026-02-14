@@ -233,7 +233,7 @@ class VNCManager:
     async def activate_vnc(self, session_id: str) -> dict:
         """Phase 2: Start x11vnc and register token for websockify routing.
 
-        Call this when the user actually needs to see the browser (CAPTCHA/2FA pause).
+        Call this when the user actually needs to see the browser (manual intervention pause).
         Returns VNC URL with the unique access token.
         """
         session = self.sessions.get(session_id)

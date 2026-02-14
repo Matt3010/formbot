@@ -49,7 +49,6 @@ export class WebSocketService {
   executionUpdate$ = new Subject<any>();
   executionProgress$ = new Subject<ExecutionProgress>();
   executionWaitingManual$ = new Subject<WaitingManualEvent>();
-  captchaDetected$ = new Subject<any>();
   analysisCompleted$ = new Subject<any>();
   highlightingReady$ = new Subject<HighlightingReadyEvent>();
   vncFieldSelected$ = new Subject<FieldSelectedEvent>();
@@ -133,7 +132,6 @@ export class WebSocketService {
       this.executionProgress$.next({ ...data, status: data.status || 'running' });
     }));
     channel.bind('ExecutionCompleted', (data: any) => this.zone.run(() => this.executionUpdate$.next(data)));
-    channel.bind('CaptchaDetected', (data: any) => this.zone.run(() => this.captchaDetected$.next(data)));
 
     // Python-originated execution events
     channel.bind('execution.started', (data: any) => this.zone.run(() => this.executionProgress$.next(data)));

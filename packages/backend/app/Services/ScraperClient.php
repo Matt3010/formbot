@@ -257,7 +257,7 @@ class ScraperClient
     }
 
     /**
-     * Resume login execution after manual CAPTCHA/2FA in VNC.
+     * Resume login execution after manual intervention in VNC.
      */
     public function resumeLoginInSession(string $analysisId): array
     {
