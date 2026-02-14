@@ -49,3 +49,9 @@ Capire quanto è il peso per la macchina di una sessioen VNC.
 
 Il delete di una analisi non aggiorna la UI.
 
+Capire se gli stati di una analisi come "Paused", mi serva davvero. 
+Se non è necessario, meglio rimuovere gli stati inutili (mvp) per semplificare l'interfaccia e il flusso di lavoro.
+Tra l'altro gli stati non sono allineati.
+Vedo usato "paused" ma l'interfaccia non lo permette.
+status: 'pending' | 'analyzing' | 'completed' | 'failed' | 'cancelled' | 'timed_out' | 'editing';
+
