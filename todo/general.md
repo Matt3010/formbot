@@ -55,3 +55,25 @@ Tra l'altro gli stati non sono allineati.
 Vedo usato "paused" ma l'interfaccia non lo permette.
 status: 'pending' | 'analyzing' | 'completed' | 'failed' | 'cancelled' | 'timed_out' | 'editing';
 
+!!!!!!!!
+tests/test_executor.py::test_execute_simple_single_form FAILED           [ 61%]
+tests/test_executor.py::test_execute_multi_step FAILED                   [ 62%]
+tests/test_executor.py::test_execute_multi_step_uses_dependency_graph_order FAILED [ 63%]
+tests/test_executor.py::test_execute_captcha_triggers_vnc_pause FAILED   [ 65%]
+tests/test_executor.py::test_execute_2fa_triggers_post_submit_vnc FAILED [ 66%]
+tests/test_executor.py::test_execute_vnc_timeout_fails FAILED            [ 67%]
+tests/test_executor.py::test_execute_task_not_found FAILED               [ 68%]
+tests/test_executor.py::test_execute_form_selector_not_found FAILED      [ 69%]
+tests/test_executor.py::test_execute_stealth_mode FAILED                 [ 70%]
+tests/test_executor.py::test_execute_stealth_disabled FAILED             [ 71%]
+tests/test_executor.py::test_execute_field_filling_select FAILED         [ 72%]
+tests/test_executor.py::test_execute_field_filling_checkbox FAILED       [ 73%]
+tests/test_executor.py::test_execute_field_filling_file_upload FAILED    [ 74%]
+tests/test_executor.py::test_execute_field_filling_hidden FAILED         [ 75%]
+tests/test_executor.py::test_execute_skips_field_with_no_preset FAILED   [ 76%]
+tests/test_executor.py::test_execute_field_error_continues FAILED        [ 77%]
+tests/test_executor.py::test_execute_dry_run_multi_step FAILED           [ 78%]
+tests/test_executor.py::test_no_duplicate_step_in_steps_log_after_captcha FAILED [ 79%]
+tests/test_executor.py::test_vnc_cleanup_on_execution_exception FAILED   [ 80%]
+tests/test_executor.py::test_vnc_cleanup_on_timeout_failure FAILED
+forse è dovuto dall'implementazione di MINIO e gli screenshots?
