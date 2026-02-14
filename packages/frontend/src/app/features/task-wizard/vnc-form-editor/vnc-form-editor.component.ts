@@ -357,7 +357,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
   vncUrl = signal<string | null>(null);
   splitPosition = signal(65);
   editorHidden = signal(false);
-  currentMode = signal<EditorMode>('view');
+  currentMode = signal<EditorMode>('select');
   userSelectedMode = signal(false);
   steps = signal<EditingStep[]>([]);
   activeStepIndex = signal(0);

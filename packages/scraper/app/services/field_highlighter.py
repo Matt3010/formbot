@@ -28,7 +28,7 @@ class FieldHighlighter:
         self.broadcaster = Broadcaster.get_instance()
         self._exposed = False
         self._fields: list[dict] = []
-        self._mode: str = "view"
+        self._mode: str = "select"
 
     async def setup(self, fields: list[dict]) -> None:
         """Register exposeFunction callbacks and store initial fields."""
@@ -101,7 +101,7 @@ class FieldHighlighter:
         )
 
     async def set_mode(self, mode: str) -> None:
-        """Set interaction mode: 'view' | 'select' | 'add' | 'remove'."""
+        """Set interaction mode: 'select' | 'add' | 'remove'."""
         self._mode = mode
         await self.page.evaluate(
             f"window.__FORMBOT_HIGHLIGHT.command_setMode({json.dumps(mode)})"

@@ -408,6 +408,13 @@ class TaskExecutor:
                         "status": step_info["status"],
                     })
 
+                # Wait for any final navigation to complete after last submit
+                try:
+                    await page.wait_for_load_state("load", timeout=15000)
+                except Exception:
+                    pass
+                await page.wait_for_timeout(1000)
+
                 # Take final screenshot
                 screenshot_name = f"{execution.id}_final.png"
                 screenshot_path = os.path.join(settings.screenshot_dir, screenshot_name)

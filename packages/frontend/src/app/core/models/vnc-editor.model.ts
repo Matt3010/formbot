@@ -1,4 +1,4 @@
-export type EditorMode = 'view' | 'select' | 'add' | 'remove';
+export type EditorMode = 'select' | 'add' | 'remove';
 export type EditorPhase = 'login' | 'login-executing' | 'target';
 
 export interface EditorField {

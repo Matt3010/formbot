@@ -62,12 +62,11 @@ import { EditorMode } from '../../../core/models/vnc-editor.model';
   `]
 })
 export class VncModeToolbarComponent {
-  mode = input<EditorMode>('view');
+  mode = input<EditorMode>('select');
   disabled = input<boolean>(false);
   modeChanged = output<EditorMode>();
 
   buttons: { value: EditorMode; icon: string; tooltip: string }[] = [
-    { value: 'view', icon: 'visibility', tooltip: 'View mode' },
     { value: 'select', icon: 'touch_app', tooltip: 'Select mode' },
     { value: 'add', icon: 'add_circle', tooltip: 'Add field' },
     { value: 'remove', icon: 'remove_circle', tooltip: 'Remove field' },

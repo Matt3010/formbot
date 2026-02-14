@@ -14,7 +14,7 @@ router = APIRouter(prefix="/editing")
 
 class SetModeRequest(BaseModel):
     analysis_id: str
-    mode: str  # view | select | add | remove
+    mode: str  # select | add | remove
 
 
 class UpdateFieldsRequest(BaseModel):
@@ -72,9 +72,9 @@ def _assert_session_command_ready(session) -> None:
 
 @router.post("/mode")
 async def set_mode(request: SetModeRequest):
-    """Set the interaction mode (view/select/add/remove)."""
-    if request.mode not in ("view", "select", "add", "remove"):
-        raise HTTPException(status_code=400, detail="Invalid mode. Must be: view, select, add, remove")
+    """Set the interaction mode (select/add/remove)."""
+    if request.mode not in ("select", "add", "remove"):
+        raise HTTPException(status_code=400, detail="Invalid mode. Must be: select, add, remove")
 
     session = _get_session(request.analysis_id)
     _assert_session_command_ready(session)
@@ -123,7 +123,7 @@ async def fill_field(request: FillFieldRequest):
 async def read_field_value(request: ReadFieldValueRequest):
     """Read the current value of a field from the live page."""
     session = _get_session(request.analysis_id)
-    _assert_session_command_ready(session)
+    # Allow reading even during login execution - it's a read-only operation
     value = await session.highlighter.read_field_value(request.field_index)
     return {"status": "ok", "value": value}
 

@@ -107,7 +107,7 @@ def test_set_mode_invalid_mode():
 def test_set_mode_session_not_found():
     resp = client.post("/editing/mode", json={
         "analysis_id": "nonexistent",
-        "mode": "view",
+        "mode": "select",
     })
     assert resp.status_code == 404
 

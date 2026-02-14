@@ -38,7 +38,7 @@
   let _fields = [];
   let _overlays = [];
   let _inputListeners = []; // {el, handler} pairs for cleanup
-  let _mode = 'view'; // view | select | add | remove
+  let _mode = 'select'; // select | add | remove
   let _focusedIndex = -1;
 
   function getColor(fieldType) {
@@ -246,17 +246,13 @@
 
   // ---- Prevent form submission during editing ----
   function handleSubmit(e) {
-    if (_mode !== 'view') {
-      e.preventDefault();
-      e.stopPropagation();
-      console.log('[FormBot] Form submission prevented during editing mode');
-    }
+    e.preventDefault();
+    e.stopPropagation();
+    console.log('[FormBot] Form submission prevented during editing mode');
   }
 
   // ---- Click handler ----
   function handleClick(e) {
-    if (_mode === 'view') return;
-
     var target = e.target;
     // Skip our own overlays
     if (target.className && typeof target.className === 'string' && target.className.indexOf(NS) !== -1) return;
@@ -339,7 +335,7 @@
   window[NS] = {
     init: function (fieldsJson) {
       _fields = typeof fieldsJson === 'string' ? JSON.parse(fieldsJson) : fieldsJson;
-      _mode = 'view';
+      _mode = 'select';
       document.addEventListener('click', handleClick, true);
       document.addEventListener('submit', handleSubmit, true);
       createOverlays();
@@ -357,8 +353,7 @@
       // Update cursor
       document.body.style.cursor =
         mode === 'add' ? 'crosshair' :
-        mode === 'remove' ? 'not-allowed' :
-        mode === 'select' ? 'pointer' : '';
+        mode === 'remove' ? 'not-allowed' : 'pointer';
     },
 
     command_focusField: function (index) {
@@ -424,7 +419,7 @@
       document.removeEventListener('submit', handleSubmit, true);
       document.body.style.cursor = '';
       _fields = [];
-      _mode = 'view';
+      _mode = 'select';
     },
 
     getFields: function () {
