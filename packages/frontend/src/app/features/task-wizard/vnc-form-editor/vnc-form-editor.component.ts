@@ -5,6 +5,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { Subscription, Subject, debounceTime } from 'rxjs';
 import { WebSocketService } from '../../../core/services/websocket.service';
 import { VncEditorService } from '../../../core/services/vnc-editor.service';
@@ -29,6 +30,7 @@ import { VncStepTabsComponent } from './vnc-step-tabs.component';
     MatProgressSpinnerModule,
     MatDividerModule,
     MatSlideToggleModule,
+    MatTooltipModule,
     VncModeToolbarComponent,
     VncFieldListComponent,
     VncFieldDetailComponent,
@@ -132,10 +134,20 @@ import { VncStepTabsComponent } from './vnc-step-tabs.component';
 
           <mat-divider></mat-divider>
 
+          <!-- Validation warning -->
+          @if (hasValidationErrors()) {
+            <div class="validation-warning">
+              <mat-icon>warning</mat-icon>
+              <span>Please fill in all required fields (name, selector) and add a submit button before confirming.</span>
+            </div>
+          }
+
           <!-- Actions (phase-dependent) -->
           <div class="actions">
             @if (currentPhase() === 'login') {
-              <button mat-raised-button color="primary" (click)="onConfirmLoginAndProceed()" [disabled]="loginExecuting()">
+              <button mat-raised-button color="primary" (click)="onConfirmLoginAndProceed()"
+                [disabled]="loginExecuting() || hasValidationErrors()"
+                [matTooltip]="hasValidationErrors() ? 'Please fix validation errors before proceeding' : ''">
                 <mat-icon>login</mat-icon> Confirm Login & Proceed
               </button>
               <button mat-stroked-button (click)="onCancel()">
@@ -155,7 +167,9 @@ import { VncStepTabsComponent } from './vnc-step-tabs.component';
               <button mat-stroked-button (click)="onAddTargetStep()" [disabled]="navigatingStep()">
                 <mat-icon>add</mat-icon> Add Target Step
               </button>
-              <button mat-raised-button color="primary" (click)="onConfirmAll()" [disabled]="confirming() || navigatingStep()">
+              <button mat-raised-button color="primary" (click)="onConfirmAll()"
+                [disabled]="confirming() || navigatingStep() || hasValidationErrors()"
+                [matTooltip]="hasValidationErrors() ? 'Please fix validation errors before proceeding' : ''">
                 @if (confirming()) {
                   <mat-spinner diameter="18"></mat-spinner>
                 } @else {
@@ -376,6 +390,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
   currentFields = signal<EditorField[]>([]);
   selectedField = signal<EditorField | null>(null);
   currentStepBreakpoint = signal(false);
+  hasValidationErrors = signal(false);
 
   private isDragging = false;
   private boundMouseMove = this.onDrag.bind(this);
@@ -1064,6 +1079,45 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
     this.editorService.saveDraft(this.analysisId(), corrections).subscribe();
   }
 
+  // --- Validation ---
+
+  private validateAllFields() {
+    const allSteps = this.steps();
+    let hasErrors = false;
+
+    for (const step of allSteps) {
+      // Check if step has fields but no submit selector
+      if (step.fields.length > 0 && !step.submit_selector?.trim()) {
+        hasErrors = true;
+        break;
+      }
+
+      for (const field of step.fields) {
+        // Name is always required
+        if (!field.field_name?.trim()) {
+          hasErrors = true;
+          break;
+        }
+
+        // Selector is always required
+        if (!field.field_selector?.trim()) {
+          hasErrors = true;
+          break;
+        }
+
+        // For required fields (not submit/button), value should be present
+        if (field.field_type !== 'submit' && field.field_type !== 'button' &&
+            field.is_required && !field.preset_value?.trim()) {
+          hasErrors = true;
+          break;
+        }
+      }
+      if (hasErrors) break;
+    }
+
+    this.hasValidationErrors.set(hasErrors);
+  }
+
   // --- Helpers ---
 
   private handleSessionError(err: any) {
@@ -1081,6 +1135,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
     const step = this.steps()[this.activeStepIndex()];
     this.currentFields.set(step?.fields || []);
     this.currentStepBreakpoint.set(step?.human_breakpoint ?? false);
+    this.validateAllFields();
   }
 
   private updateSelectedField() {

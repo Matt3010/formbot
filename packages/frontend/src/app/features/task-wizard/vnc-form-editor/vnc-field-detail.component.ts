@@ -27,6 +27,17 @@ import { EditorField, TestSelectorResult } from '../../../core/models/vnc-editor
       <div class="field-detail">
         <h4>Field #{{ fieldIndex() + 1 }}</h4>
 
+        @if (validationErrors().length > 0) {
+          <div class="validation-errors">
+            <mat-icon>error</mat-icon>
+            <div class="error-list">
+              @for (error of validationErrors(); track error) {
+                <div class="error-item">{{ error }}</div>
+              }
+            </div>
+          </div>
+        }
+
         <mat-form-field appearance="outline" class="full-width">
           <mat-label>Name</mat-label>
           <input matInput [(ngModel)]="editName" (ngModelChange)="emitChange()">
@@ -112,6 +123,35 @@ import { EditorField, TestSelectorResult } from '../../../core/models/vnc-editor
       color: #E65100;
     }
     .selector-warning mat-icon { font-size: 16px; width: 16px; height: 16px; }
+    .validation-errors {
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+      padding: 8px 12px;
+      background: #FFEBEE;
+      border-radius: 4px;
+      border-left: 3px solid #F44336;
+      margin-bottom: 4px;
+    }
+    .validation-errors mat-icon {
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+      color: #F44336;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .error-list {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .error-item {
+      font-size: 12px;
+      color: #C62828;
+      line-height: 1.4;
+    }
     .no-selection {
       display: flex;
       flex-direction: column;
@@ -133,6 +173,7 @@ export class VncFieldDetailComponent {
   testSelectorRequested = output<string>();
 
   testResult = signal<TestSelectorResult | null>(null);
+  validationErrors = signal<string[]>([]);
 
   editName = '';
   editSelector = '';
@@ -159,6 +200,7 @@ export class VncFieldDetailComponent {
   emitChange() {
     const f = this.field();
     if (!f) return;
+    this.validate();
     this.fieldChanged.emit({
       ...f,
       field_name: this.editName,
@@ -168,6 +210,29 @@ export class VncFieldDetailComponent {
       is_sensitive: this.editSensitive,
       is_required: this.editRequired,
     });
+  }
+
+  validate(): boolean {
+    const errors: string[] = [];
+
+    // Name is always required
+    if (!this.editName?.trim()) {
+      errors.push('Name is required');
+    }
+
+    // Selector is always required
+    if (!this.editSelector?.trim()) {
+      errors.push('CSS Selector is required');
+    }
+
+    // For submit/button types, value is not needed but name and selector are critical
+    // For other types, if field is marked required, value should be present
+    if (this.editType !== 'submit' && this.editType !== 'button' && this.editRequired && !this.editValue?.trim()) {
+      errors.push('Value is required for required fields');
+    }
+
+    this.validationErrors.set(errors);
+    return errors.length === 0;
   }
 
   onTestSelector() {
