@@ -45,7 +45,7 @@ in modo tale che l'utente possa accedere direttamente al file caricato senza dov
 Lo stesso problema c'è anche per i vari puntamenti del VNC che non so come funzionano.
 In generale capire come rendere l'infrastruttura deployabile e accessibile da un dominio pubblico.
 
-Capire quanto è il peso per la macchina di una sessioen VNC.
+Capire quanto è il peso per la macchina di una sessione VNC.
 
 Il delete di una analisi non aggiorna la UI.
 
