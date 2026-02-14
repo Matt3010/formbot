@@ -28,6 +28,7 @@ class FieldHighlighter:
         self.broadcaster = Broadcaster.get_instance()
         self._exposed = False
         self._fields: list[dict] = []
+        self._mode: str = "view"
 
     async def setup(self, fields: list[dict]) -> None:
         """Register exposeFunction callbacks and store initial fields."""
@@ -61,6 +62,9 @@ class FieldHighlighter:
         await self.page.evaluate(
             f"window.__FORMBOT_HIGHLIGHT.init({fields_json})"
         )
+        await self.page.evaluate(
+            f"window.__FORMBOT_HIGHLIGHT.command_setMode({json.dumps(self._mode)})"
+        )
 
         # Try injecting into iframes too
         for frame in self.page.frames:
@@ -70,6 +74,9 @@ class FieldHighlighter:
                 await frame.evaluate(_HIGHLIGHT_JS)
                 await frame.evaluate(
                     f"window.__FORMBOT_HIGHLIGHT.init({fields_json})"
+                )
+                await frame.evaluate(
+                    f"window.__FORMBOT_HIGHLIGHT.command_setMode({json.dumps(self._mode)})"
                 )
             except Exception:
                 pass  # frame may be detached or cross-origin
@@ -95,8 +102,9 @@ class FieldHighlighter:
 
     async def set_mode(self, mode: str) -> None:
         """Set interaction mode: 'view' | 'select' | 'add' | 'remove'."""
+        self._mode = mode
         await self.page.evaluate(
-            f"window.__FORMBOT_HIGHLIGHT.command_setMode('{mode}')"
+            f"window.__FORMBOT_HIGHLIGHT.command_setMode({json.dumps(mode)})"
         )
 
     async def focus_field(self, field_index: int) -> None:

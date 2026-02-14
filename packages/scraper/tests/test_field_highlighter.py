@@ -117,7 +117,25 @@ async def test_set_mode(highlighter, mock_page):
 
     call_arg = mock_page.evaluate.call_args[0][0]
     assert "command_setMode" in call_arg
-    assert "'select'" in call_arg
+    assert '"select"' in call_arg
+    assert highlighter._mode == "select"
+
+
+@pytest.mark.asyncio
+async def test_inject_reapplies_saved_mode(highlighter, mock_page):
+    """inject() should restore the current interaction mode after init()."""
+    await highlighter.setup(SAMPLE_FIELDS)
+    await highlighter.set_mode("remove")
+    mock_page.evaluate.reset_mock()
+
+    await highlighter.inject()
+
+    mode_calls = [
+        c for c in mock_page.evaluate.call_args_list
+        if "command_setMode" in str(c)
+    ]
+    assert len(mode_calls) >= 1
+    assert '"remove"' in str(mode_calls[0])
 
 
 @pytest.mark.asyncio

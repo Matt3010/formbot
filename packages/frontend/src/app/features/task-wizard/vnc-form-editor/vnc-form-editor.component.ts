@@ -315,6 +315,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
   splitPosition = signal(65);
   editorHidden = signal(false);
   currentMode = signal<EditorMode>('view');
+  userSelectedMode = signal(false);
   steps = signal<EditingStep[]>([]);
   activeStepIndex = signal(0);
   selectedFieldIndex = signal(-1);
@@ -365,8 +366,8 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
       }
 
       // Auto-set to 'add' mode on target phase so user can immediately start picking fields
-      if (this.currentPhase() === 'target') {
-        this.onModeChanged('add');
+      if (this.currentPhase() === 'target' && !this.userSelectedMode()) {
+        this.onModeChanged('add', false);
       }
     });
 
@@ -519,7 +520,10 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
 
   // --- Mode ---
 
-  onModeChanged(mode: EditorMode) {
+  onModeChanged(mode: EditorMode, markUserSelection: boolean = true) {
+    if (markUserSelection) {
+      this.userSelectedMode.set(true);
+    }
     this.currentMode.set(mode);
     this.editorService.setMode(this.analysisId(), mode).subscribe({
       error: (err) => this.handleSessionError(err)
@@ -760,7 +764,9 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
     this.loginProgress.set('');
 
     // Auto-set to 'add' mode so user can immediately start picking fields
-    this.onModeChanged('add');
+    if (!this.userSelectedMode()) {
+      this.onModeChanged('add', false);
+    }
   }
 
   // --- Confirm / Cancel ---
