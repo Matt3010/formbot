@@ -55,6 +55,10 @@ import { AuthService } from './core/services/auth.service';
               <mat-icon matListItemIcon>list_alt</mat-icon>
               <span matListItemTitle>Logs</span>
             </a>
+            <a mat-list-item routerLink="/screenshots" (click)="closeOnMobile(sidenav)">
+              <mat-icon matListItemIcon>photo_library</mat-icon>
+              <span matListItemTitle>Screenshots</span>
+            </a>
             <a mat-list-item routerLink="/settings" (click)="closeOnMobile(sidenav)">
               <mat-icon matListItemIcon>settings</mat-icon>
               <span matListItemTitle>Settings</span>

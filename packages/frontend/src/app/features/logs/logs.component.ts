@@ -141,7 +141,7 @@ import { ScreenshotViewerComponent } from '../../shared/components/screenshot-vi
             <ng-container matColumnDef="actions">
               <th mat-header-cell *matHeaderCellDef>Actions</th>
               <td mat-cell *matCellDef="let log">
-                @if (log.screenshot_path) {
+                @if (log.has_screenshot || log.screenshot_path || log.screenshot_url) {
                   <button mat-icon-button matTooltip="Screenshot" (click)="viewScreenshot(log.id)">
                     <mat-icon>photo_camera</mat-icon>
                   </button>

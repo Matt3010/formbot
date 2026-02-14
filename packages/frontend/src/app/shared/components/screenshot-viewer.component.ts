@@ -102,17 +102,44 @@ export class ScreenshotViewerComponent implements OnInit, OnDestroy {
   loading = signal(true);
 
   ngOnInit() {
-    this.sub = this.http.get(`/api/executions/${this.data.executionId}/screenshot`, { responseType: 'blob' })
-      .subscribe({
-        next: (blob) => {
-          this.imageUrl.set(URL.createObjectURL(blob));
+    this.sub = this.http.get(`/api/executions/${this.data.executionId}/screenshot`, {
+      responseType: 'blob',
+      observe: 'response'
+    }).subscribe({
+      next: (response) => {
+        const contentType = response.headers.get('Content-Type') || '';
+
+        if (contentType.includes('application/json') && response.body) {
+          // This is a presigned URL response - read the JSON
+          const reader = new FileReader();
+          reader.onload = () => {
+            try {
+              const json = JSON.parse(reader.result as string);
+              if (json.url) {
+                this.imageUrl.set(json.url);
+              } else {
+                this.imageUrl.set(null);
+              }
+            } catch {
+              this.imageUrl.set(null);
+            }
+            this.loading.set(false);
+          };
+          reader.readAsText(response.body);
+        } else if (response.body) {
+          // This is a legacy blob response
+          this.imageUrl.set(URL.createObjectURL(response.body));
           this.loading.set(false);
-        },
-        error: () => {
+        } else {
           this.imageUrl.set(null);
           this.loading.set(false);
-        },
-      });
+        }
+      },
+      error: () => {
+        this.imageUrl.set(null);
+        this.loading.set(false);
+      },
+    });
   }
 
   ngOnDestroy() {

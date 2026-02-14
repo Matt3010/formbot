@@ -33,6 +33,8 @@ class ExecutionLog extends Model
         'retry_count',
         'error_message',
         'screenshot_path',
+        'screenshot_url',
+        'screenshot_size',
         'steps_log',
         'vnc_session_id',
     ];

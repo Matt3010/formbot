@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(vendorbinphpunit)",
+      "Bash(php vendor/bin/phpunit:*)",
+      "Bash(pip install:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(npm run build:*)",
+      "Bash(vendor/bin/phpunit:*)",
+      "Bash(docker compose build:*)",
+      "Bash(docker compose run:*)"
+    ]
+  }
+}

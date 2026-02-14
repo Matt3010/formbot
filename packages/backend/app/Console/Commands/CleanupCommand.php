@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\AppSetting;
 use App\Models\ExecutionLog;
+use App\Services\ScreenshotStorage;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -23,7 +24,7 @@ class CleanupCommand extends Command
     /**
      * Execute the console command.
      */
-    public function handle(): int
+    public function handle(ScreenshotStorage $screenshotStorage): int
     {
         $retentionDays = (int) AppSetting::get('retention_days', 30);
         $cutoffDate = now()->subDays($retentionDays);
@@ -34,36 +35,51 @@ class CleanupCommand extends Command
         $oldExecutions = ExecutionLog::where('created_at', '<', $cutoffDate)->get();
 
         $deletedLogs = 0;
-        $deletedScreenshots = 0;
+        $deletedFilesystemScreenshots = 0;
+        $deletedMinioScreenshots = 0;
 
         foreach ($oldExecutions as $execution) {
-            // Delete associated screenshot file
+            // Delete associated MinIO screenshot
+            if ($execution->screenshot_url) {
+                if ($screenshotStorage->delete($execution->screenshot_url)) {
+                    $deletedMinioScreenshots++;
+                }
+            }
+
+            // Delete associated filesystem screenshot
             if ($execution->screenshot_path && Storage::disk('local')->exists($execution->screenshot_path)) {
                 Storage::disk('local')->delete($execution->screenshot_path);
-                $deletedScreenshots++;
+                $deletedFilesystemScreenshots++;
             }
 
             $execution->delete();
             $deletedLogs++;
         }
 
-        // Clean up orphaned screenshot files
+        // Clean up orphaned filesystem screenshot files
         if (Storage::disk('local')->exists('screenshots')) {
             $screenshotFiles = Storage::disk('local')->files('screenshots');
             foreach ($screenshotFiles as $file) {
                 $lastModified = Storage::disk('local')->lastModified($file);
                 if ($lastModified < $cutoffDate->timestamp) {
                     Storage::disk('local')->delete($file);
-                    $deletedScreenshots++;
+                    $deletedFilesystemScreenshots++;
                 }
             }
         }
 
-        $this->info("Deleted {$deletedLogs} execution log(s) and {$deletedScreenshots} screenshot(s).");
+        // Clean up orphaned MinIO screenshots
+        $deletedMinioScreenshots += $screenshotStorage->deleteOlderThan($cutoffDate);
+
+        $totalDeletedScreenshots = $deletedFilesystemScreenshots + $deletedMinioScreenshots;
+        $this->info("Deleted {$deletedLogs} execution log(s) and {$totalDeletedScreenshots} screenshot(s).");
+        $this->info("  - Filesystem: {$deletedFilesystemScreenshots}");
+        $this->info("  - MinIO: {$deletedMinioScreenshots}");
 
         Log::info('Cleanup command completed', [
             'execution_logs_deleted' => $deletedLogs,
-            'screenshots_deleted' => $deletedScreenshots,
+            'filesystem_screenshots_deleted' => $deletedFilesystemScreenshots,
+            'minio_screenshots_deleted' => $deletedMinioScreenshots,
             'retention_days' => $retentionDays,
         ]);
 

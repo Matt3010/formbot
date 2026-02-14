@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Text, Boolean, Integer, DateTime, ForeignKey
+from sqlalchemy import Column, String, Text, Boolean, Integer, BigInteger, DateTime, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from app.database import Base
 import uuid
@@ -16,6 +16,8 @@ class ExecutionLog(Base):
     retry_count = Column(Integer, default=0)
     error_message = Column(Text, nullable=True)
     screenshot_path = Column(Text, nullable=True)
+    screenshot_url = Column(Text, nullable=True)
+    screenshot_size = Column(BigInteger, nullable=True)
     steps_log = Column(JSONB, nullable=True)
     vnc_session_id = Column(String(100), nullable=True)
     created_at = Column(DateTime)

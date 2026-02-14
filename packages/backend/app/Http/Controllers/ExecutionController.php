@@ -6,6 +6,7 @@ use App\Http\Resources\ExecutionLogResource;
 use App\Models\ExecutionLog;
 use App\Models\Task;
 use App\Services\ScraperClient;
+use App\Services\ScreenshotStorage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -39,13 +40,29 @@ class ExecutionController extends Controller
     }
 
     /**
-     * Return the screenshot file for an execution.
+     * Return the screenshot for an execution.
+     * Returns presigned URL for MinIO screenshots, or file for legacy filesystem screenshots.
      */
-    public function screenshot(ExecutionLog $execution): mixed
+    public function screenshot(ExecutionLog $execution, ScreenshotStorage $screenshotStorage): mixed
     {
         $execution->load('task');
         $this->authorizeTask($execution->task);
 
+        // Check for MinIO screenshot (new system)
+        if ($execution->screenshot_url) {
+            if ($screenshotStorage->exists($execution->screenshot_url)) {
+                $presignedUrl = $screenshotStorage->getPresignedUrl($execution->screenshot_url);
+                if ($presignedUrl) {
+                    return response()->json([
+                        'url' => $presignedUrl,
+                        'expires_in' => $screenshotStorage->getPresignedUrlExpiry() * 60,
+                        'storage' => 'minio',
+                    ]);
+                }
+            }
+        }
+
+        // Fallback to legacy filesystem screenshot
         if (!$execution->screenshot_path) {
             return response()->json(['message' => 'Screenshot not found.'], 404);
         }
@@ -69,6 +86,165 @@ class ExecutionController extends Controller
         }
 
         return response()->file(Storage::disk('local')->path($resolvedPath));
+    }
+
+    /**
+     * Delete a screenshot for an execution.
+     */
+    public function deleteScreenshot(ExecutionLog $execution, ScreenshotStorage $screenshotStorage): JsonResponse
+    {
+        $execution->load('task');
+        $this->authorizeTask($execution->task);
+
+        $deleted = false;
+
+        // Delete from MinIO if exists
+        if ($execution->screenshot_url) {
+            if ($screenshotStorage->delete($execution->screenshot_url)) {
+                $deleted = true;
+            }
+        }
+
+        // Delete from filesystem if exists
+        if ($execution->screenshot_path) {
+            $candidates = [
+                $execution->screenshot_path,
+                'screenshots/' . ltrim($execution->screenshot_path, '/'),
+            ];
+
+            foreach ($candidates as $candidate) {
+                if (Storage::disk('local')->exists($candidate)) {
+                    Storage::disk('local')->delete($candidate);
+                    $deleted = true;
+                    break;
+                }
+            }
+        }
+
+        if (!$deleted) {
+            return response()->json(['message' => 'Screenshot not found.'], 404);
+        }
+
+        // Update execution record
+        $execution->update([
+            'screenshot_url' => null,
+            'screenshot_size' => null,
+            'screenshot_path' => null,
+        ]);
+
+        return response()->json(['message' => 'Screenshot deleted successfully.']);
+    }
+
+    /**
+     * List all screenshots with pagination.
+     */
+    public function listScreenshots(Request $request, ScreenshotStorage $screenshotStorage): JsonResponse
+    {
+        $user = $request->user();
+
+        $query = ExecutionLog::whereHas('task', function ($query) use ($user) {
+            $query->where('user_id', $user->id);
+        })
+            ->where(function ($query) {
+                $query->whereNotNull('screenshot_url')
+                    ->orWhereNotNull('screenshot_path');
+            })
+            ->with('task:id,name')
+            ->orderBy('created_at', 'desc');
+
+        $perPage = $request->input('per_page', 25);
+        $executions = $query->paginate($perPage);
+
+        $screenshots = $executions->getCollection()->map(function ($execution) use ($screenshotStorage) {
+            $hasMinioScreenshot = $execution->screenshot_url && $screenshotStorage->exists($execution->screenshot_url);
+            $hasFilesystemScreenshot = false;
+
+            if ($execution->screenshot_path) {
+                $candidates = [
+                    $execution->screenshot_path,
+                    'screenshots/' . ltrim($execution->screenshot_path, '/'),
+                ];
+                foreach ($candidates as $candidate) {
+                    if (Storage::disk('local')->exists($candidate)) {
+                        $hasFilesystemScreenshot = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!$hasMinioScreenshot && !$hasFilesystemScreenshot) {
+                return null;
+            }
+
+            return [
+                'execution_id' => $execution->id,
+                'task_id' => $execution->task_id,
+                'task_name' => $execution->task->name ?? 'Unknown',
+                'created_at' => $execution->created_at->toIso8601String(),
+                'size' => $execution->screenshot_size,
+                'storage' => $hasMinioScreenshot ? 'minio' : 'filesystem',
+            ];
+        })->filter()->values();
+
+        return response()->json([
+            'data' => $screenshots,
+            'meta' => [
+                'current_page' => $executions->currentPage(),
+                'last_page' => $executions->lastPage(),
+                'per_page' => $executions->perPage(),
+                'total' => $executions->total(),
+            ],
+        ]);
+    }
+
+    /**
+     * Get storage statistics for screenshots.
+     */
+    public function storageStats(Request $request, ScreenshotStorage $screenshotStorage): JsonResponse
+    {
+        $user = $request->user();
+
+        // Get MinIO stats
+        $minioStats = $screenshotStorage->getStats();
+
+        // Get filesystem stats for user's screenshots
+        $filesystemSize = 0;
+        $filesystemCount = 0;
+
+        $executions = ExecutionLog::whereHas('task', function ($query) use ($user) {
+            $query->where('user_id', $user->id);
+        })
+            ->whereNotNull('screenshot_path')
+            ->get();
+
+        foreach ($executions as $execution) {
+            $candidates = [
+                $execution->screenshot_path,
+                'screenshots/' . ltrim($execution->screenshot_path, '/'),
+            ];
+            foreach ($candidates as $candidate) {
+                if (Storage::disk('local')->exists($candidate)) {
+                    $filesystemSize += Storage::disk('local')->size($candidate);
+                    $filesystemCount++;
+                    break;
+                }
+            }
+        }
+
+        return response()->json([
+            'minio' => [
+                'total_size' => $minioStats['total_size'],
+                'count' => $minioStats['count'],
+            ],
+            'filesystem' => [
+                'total_size' => $filesystemSize,
+                'count' => $filesystemCount,
+            ],
+            'total' => [
+                'total_size' => $minioStats['total_size'] + $filesystemSize,
+                'count' => $minioStats['count'] + $filesystemCount,
+            ],
+        ]);
     }
 
     /**

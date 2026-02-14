@@ -40,8 +40,13 @@ Route::middleware('auth:api')->group(function () {
     Route::get('/tasks/{task}/executions', [ExecutionController::class, 'index']);
     Route::get('/executions/{execution}', [ExecutionController::class, 'show']);
     Route::get('/executions/{execution}/screenshot', [ExecutionController::class, 'screenshot']);
+    Route::delete('/executions/{execution}/screenshot', [ExecutionController::class, 'deleteScreenshot']);
     Route::post('/executions/{execution}/resume', [ExecutionController::class, 'resume']);
     Route::post('/executions/{execution}/abort', [ExecutionController::class, 'abort']);
+
+    // Screenshots
+    Route::get('/screenshots', [ExecutionController::class, 'listScreenshots']);
+    Route::get('/screenshots/stats', [ExecutionController::class, 'storageStats']);
 
     // File upload
     Route::post('/files/upload', [ExecutionController::class, 'uploadFile']);

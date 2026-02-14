@@ -22,6 +22,12 @@ class Settings(BaseSettings):
     pusher_host: str = "websocket"
     pusher_port: int = 6001
 
+    # MinIO config for screenshot storage
+    minio_endpoint: str = "http://minio:9000"
+    minio_access_key: str = "formbot"
+    minio_secret_key: str = "formbot-secret-key"
+    minio_bucket: str = "formbot-screenshots"
+
     class Config:
         env_file = ".env"
 

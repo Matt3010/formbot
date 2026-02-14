@@ -1,6 +1,7 @@
 import os
 import uuid
 import asyncio
+import logging
 from datetime import UTC, datetime
 from playwright.async_api import async_playwright
 from sqlalchemy.orm import Session
@@ -8,11 +9,14 @@ from app.config import settings
 from app.services.stealth import apply_stealth
 from app.services.vnc_manager import VNCManager
 from app.services.broadcaster import Broadcaster
+from app.services.screenshot_storage import ScreenshotStorage
 from app.models.task import Task
 from app.models.form_definition import FormDefinition
 from app.models.form_field import FormField
 from app.models.execution_log import ExecutionLog
 from cryptography.fernet import Fernet
+
+logger = logging.getLogger(__name__)
 
 
 class TaskExecutor:
@@ -20,6 +24,7 @@ class TaskExecutor:
         self.db = db
         self.vnc_manager = vnc_manager or VNCManager()
         self.broadcaster = Broadcaster.get_instance()
+        self.screenshot_storage = ScreenshotStorage.get_instance()
 
     @staticmethod
     def _step_sort_key(form_def: FormDefinition) -> tuple[int, str]:
@@ -361,11 +366,23 @@ class TaskExecutor:
                         screenshot_path = os.path.join(settings.screenshot_dir, screenshot_name)
                         await page.screenshot(path=screenshot_path, full_page=True)
 
+                        # Upload to MinIO
+                        screenshot_url = None
+                        screenshot_size = None
+                        try:
+                            screenshot_url, screenshot_size = self.screenshot_storage.upload_screenshot(
+                                screenshot_path, str(task.user_id), str(execution.id)
+                            )
+                        except Exception as e:
+                            logger.warning(f"Failed to upload dry-run screenshot to MinIO: {e}")
+
                         step_info["status"] = "dry_run_complete"
                         steps_log.append(step_info)
 
                         execution.status = 'dry_run_ok'
                         execution.screenshot_path = screenshot_name
+                        execution.screenshot_url = screenshot_url
+                        execution.screenshot_size = screenshot_size
                         execution.completed_at = datetime.now(UTC)
                         execution.steps_log = steps_log
                         self.db.commit()
@@ -380,7 +397,8 @@ class TaskExecutor:
                         return {
                             "execution_id": str(execution.id),
                             "status": "dry_run_ok",
-                            "screenshot": screenshot_name
+                            "screenshot": screenshot_name,
+                            "screenshot_url": screenshot_url
                         }
 
                     # Submit form
@@ -420,11 +438,23 @@ class TaskExecutor:
                 screenshot_path = os.path.join(settings.screenshot_dir, screenshot_name)
                 await page.screenshot(path=screenshot_path, full_page=True)
 
+                # Upload to MinIO
+                screenshot_url = None
+                screenshot_size = None
+                try:
+                    screenshot_url, screenshot_size = self.screenshot_storage.upload_screenshot(
+                        screenshot_path, str(task.user_id), str(execution.id)
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to upload screenshot to MinIO: {e}")
+
                 await browser.close()
 
             # Update execution log - success
             execution.status = 'success'
             execution.screenshot_path = screenshot_name
+            execution.screenshot_url = screenshot_url
+            execution.screenshot_size = screenshot_size
             execution.completed_at = datetime.now(UTC)
             execution.steps_log = steps_log
             self.db.commit()
@@ -438,7 +468,8 @@ class TaskExecutor:
             return {
                 "execution_id": str(execution.id),
                 "status": "success",
-                "screenshot": screenshot_name
+                "screenshot": screenshot_name,
+                "screenshot_url": screenshot_url
             }
 
         except Exception as e:

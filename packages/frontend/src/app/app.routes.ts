@@ -12,6 +12,7 @@ export const routes: Routes = [
     { path: 'tasks/:id/edit', loadComponent: () => import('./features/task-wizard/task-wizard.component').then(m => m.TaskWizardComponent) },
     { path: 'tasks/:id', loadComponent: () => import('./features/task-detail/task-detail.component').then(m => m.TaskDetailComponent) },
     { path: 'logs', loadComponent: () => import('./features/logs/logs.component').then(m => m.LogsComponent) },
+    { path: 'screenshots', loadComponent: () => import('./features/screenshots/screenshots.component').then(m => m.ScreenshotsComponent) },
     { path: 'settings', loadComponent: () => import('./features/settings/settings.component').then(m => m.SettingsComponent) },
   ]},
   { path: '**', redirectTo: '' }
