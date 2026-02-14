@@ -297,6 +297,42 @@ class TaskTest extends TestCase
         $this->assertNotNull($passwordField->preset_value);
     }
 
+    public function test_create_task_ignores_legacy_form_definition_keys(): void
+    {
+        $response = $this->postJson('/api/tasks', [
+            'name' => 'Legacy Keys Task',
+            'target_url' => 'https://example.com/form',
+            'form_definitions' => [[
+                'step_order' => 1,
+                'page_url' => 'https://example.com/form',
+                'form_type' => 'target',
+                'form_selector' => '#legacy-form',
+                'submit_selector' => '#submit',
+                'ai_confidence' => 0.99,
+                'captcha_detected' => true,
+                'two_factor_expected' => true,
+                'form_fields' => [[
+                    'field_name' => 'email',
+                    'field_type' => 'email',
+                    'field_selector' => '#email',
+                    'sort_order' => 0,
+                    'source' => 'legacy-ui',
+                ]],
+            ]],
+        ]);
+
+        $response->assertStatus(201)
+            ->assertJsonPath('data.name', 'Legacy Keys Task')
+            ->assertJsonPath('data.form_definitions.0.form_selector', '#legacy-form')
+            ->assertJsonCount(1, 'data.form_definitions.0.form_fields');
+
+        $this->assertDatabaseHas('form_definitions', [
+            'task_id' => $response->json('data.id'),
+            'form_type' => 'target',
+            'form_selector' => '#legacy-form',
+        ]);
+    }
+
     public function test_create_task_validation_errors(): void
     {
         // Missing required fields
@@ -432,6 +468,39 @@ class TaskTest extends TestCase
 
         // The old form definition should be deleted
         $this->assertDatabaseMissing('form_definitions', ['id' => $oldFdId]);
+    }
+
+    public function test_update_task_ignores_legacy_form_definition_keys(): void
+    {
+        $task = $this->createTask();
+
+        $response = $this->putJson("/api/tasks/{$task->id}", [
+            'form_definitions' => [[
+                'step_order' => 1,
+                'page_url' => 'https://example.com/updated',
+                'form_type' => 'target',
+                'form_selector' => '#updated-form',
+                'submit_selector' => '#updated-submit',
+                'ai_confidence' => 0.75,
+                'captcha_detected' => false,
+                'two_factor_expected' => false,
+                'form_fields' => [[
+                    'field_name' => 'updated_email',
+                    'field_type' => 'email',
+                    'field_selector' => '#updated-email',
+                    'sort_order' => 0,
+                ]],
+            ]],
+        ]);
+
+        $response->assertStatus(200)
+            ->assertJsonPath('data.form_definitions.0.form_selector', '#updated-form')
+            ->assertJsonCount(1, 'data.form_definitions.0.form_fields');
+
+        $this->assertDatabaseHas('form_definitions', [
+            'task_id' => $task->id,
+            'form_selector' => '#updated-form',
+        ]);
     }
 
     // -----------------------------------------------------------------
@@ -714,6 +783,41 @@ class TaskTest extends TestCase
             'name' => 'Imported Task',
             'status' => 'draft',
             'user_id' => $this->user->id,
+        ]);
+    }
+
+    public function test_import_task_ignores_legacy_form_definition_keys(): void
+    {
+        $response = $this->postJson('/api/tasks/import', [
+            'name' => 'Imported Legacy Task',
+            'target_url' => 'https://import.com/form',
+            'form_definitions' => [[
+                'step_order' => 1,
+                'page_url' => 'https://import.com/form',
+                'form_type' => 'target',
+                'form_selector' => '#import-legacy-form',
+                'submit_selector' => '#submit',
+                'ai_confidence' => 0.84,
+                'captcha_detected' => false,
+                'two_factor_expected' => false,
+                'form_fields' => [[
+                    'field_name' => 'email',
+                    'field_type' => 'email',
+                    'field_selector' => '#email',
+                    'sort_order' => 0,
+                ]],
+            ]],
+        ]);
+
+        $response->assertStatus(201)
+            ->assertJsonPath('data.name', 'Imported Legacy Task')
+            ->assertJsonPath('data.form_definitions.0.form_selector', '#import-legacy-form')
+            ->assertJsonCount(1, 'data.form_definitions.0.form_fields');
+
+        $this->assertDatabaseHas('form_definitions', [
+            'task_id' => $response->json('data.id'),
+            'form_selector' => '#import-legacy-form',
+            'form_type' => 'target',
         ]);
     }
 }

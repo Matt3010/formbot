@@ -17,6 +17,28 @@ use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
 class TaskController extends Controller
 {
+    private const FORM_DEFINITION_KEYS = [
+        'step_order',
+        'page_url',
+        'form_type',
+        'form_selector',
+        'submit_selector',
+        'human_breakpoint',
+    ];
+
+    private const FORM_FIELD_KEYS = [
+        'field_name',
+        'field_type',
+        'field_selector',
+        'field_purpose',
+        'preset_value',
+        'is_sensitive',
+        'is_file_upload',
+        'is_required',
+        'options',
+        'sort_order',
+    ];
+
     /**
      * Display a listing of the user's tasks.
      */
@@ -56,23 +78,7 @@ class TaskController extends Controller
         $task = Task::create($taskData);
 
         if (!empty($validated['form_definitions'])) {
-            foreach ($validated['form_definitions'] as $fdData) {
-                $fieldsData = $fdData['form_fields'] ?? [];
-                unset($fdData['form_fields']);
-
-                $fdData['task_id'] = $task->id;
-                $formDefinition = FormDefinition::create($fdData);
-
-                foreach ($fieldsData as $fieldData) {
-                    $fieldData['form_definition_id'] = $formDefinition->id;
-
-                    if (!empty($fieldData['is_sensitive']) && !empty($fieldData['preset_value'])) {
-                        $fieldData['preset_value'] = app(CryptoService::class)->encrypt($fieldData['preset_value']);
-                    }
-
-                    FormField::create($fieldData);
-                }
-            }
+            $this->persistFormDefinitions($task, $validated['form_definitions']);
         }
 
         $task->load('formDefinitions.formFields');
@@ -107,24 +113,7 @@ class TaskController extends Controller
         if (isset($validated['form_definitions'])) {
             // Delete existing form definitions (cascade deletes fields)
             $task->formDefinitions()->delete();
-
-            foreach ($validated['form_definitions'] as $fdData) {
-                $fieldsData = $fdData['form_fields'] ?? [];
-                unset($fdData['form_fields']);
-
-                $fdData['task_id'] = $task->id;
-                $formDefinition = FormDefinition::create($fdData);
-
-                foreach ($fieldsData as $fieldData) {
-                    $fieldData['form_definition_id'] = $formDefinition->id;
-
-                    if (!empty($fieldData['is_sensitive']) && !empty($fieldData['preset_value'])) {
-                        $fieldData['preset_value'] = app(CryptoService::class)->encrypt($fieldData['preset_value']);
-                    }
-
-                    FormField::create($fieldData);
-                }
-            }
+            $this->persistFormDefinitions($task, $validated['form_definitions']);
         }
 
         $task->load('formDefinitions.formFields');
@@ -287,18 +276,9 @@ class TaskController extends Controller
         $task = Task::create($taskData);
 
         if ($request->has('form_definitions')) {
-            foreach ($request->input('form_definitions') as $fdData) {
-                $fieldsData = $fdData['form_fields'] ?? [];
-                unset($fdData['form_fields'], $fdData['id'], $fdData['task_id'], $fdData['created_at'], $fdData['updated_at']);
-
-                $fdData['task_id'] = $task->id;
-                $formDefinition = FormDefinition::create($fdData);
-
-                foreach ($fieldsData as $fieldData) {
-                    unset($fieldData['id'], $fieldData['form_definition_id'], $fieldData['created_at'], $fieldData['updated_at']);
-                    $fieldData['form_definition_id'] = $formDefinition->id;
-                    FormField::create($fieldData);
-                }
+            $formDefinitions = $request->input('form_definitions', []);
+            if (is_array($formDefinitions)) {
+                $this->persistFormDefinitions($task, $formDefinitions);
             }
         }
 
@@ -315,5 +295,48 @@ class TaskController extends Controller
         if ($task->user_id !== request()->user()->id) {
             abort(403, 'Unauthorized access to this task.');
         }
+    }
+
+    /**
+     * Persist form definitions/fields while dropping unknown payload keys.
+     */
+    private function persistFormDefinitions(Task $task, array $formDefinitions): void
+    {
+        foreach ($formDefinitions as $fdData) {
+            $fieldsData = is_array($fdData['form_fields'] ?? null) ? $fdData['form_fields'] : [];
+            $sanitizedDefinition = $this->sanitizeFormDefinitionData((array) $fdData, $task->id);
+
+            $formDefinition = FormDefinition::create($sanitizedDefinition);
+            $this->persistFormFields($formDefinition, $fieldsData);
+        }
+    }
+
+    private function persistFormFields(FormDefinition $formDefinition, array $fieldsData): void
+    {
+        foreach ($fieldsData as $fieldData) {
+            $sanitizedField = $this->sanitizeFormFieldData((array) $fieldData, $formDefinition->id);
+
+            if (!empty($sanitizedField['is_sensitive']) && !empty($sanitizedField['preset_value'])) {
+                $sanitizedField['preset_value'] = app(CryptoService::class)->encrypt($sanitizedField['preset_value']);
+            }
+
+            FormField::create($sanitizedField);
+        }
+    }
+
+    private function sanitizeFormDefinitionData(array $fdData, string $taskId): array
+    {
+        $sanitized = collect($fdData)->only(self::FORM_DEFINITION_KEYS)->toArray();
+        $sanitized['task_id'] = $taskId;
+
+        return $sanitized;
+    }
+
+    private function sanitizeFormFieldData(array $fieldData, string $formDefinitionId): array
+    {
+        $sanitized = collect($fieldData)->only(self::FORM_FIELD_KEYS)->toArray();
+        $sanitized['form_definition_id'] = $formDefinitionId;
+
+        return $sanitized;
     }
 }
