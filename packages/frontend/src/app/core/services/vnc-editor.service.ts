@@ -63,8 +63,12 @@ export class VncEditorService {
     return this.api.post(`/analyses/${analysisId}/editing/cancel`);
   }
 
-  navigateStep(analysisId: string, step: number, url: string): Observable<any> {
-    return this.api.post(`/analyses/${analysisId}/editing/step`, { step, url });
+  navigateStep(analysisId: string, step: number, url: string, requestId?: string): Observable<any> {
+    return this.api.post(`/analyses/${analysisId}/editing/step`, {
+      step,
+      url,
+      request_id: requestId,
+    });
   }
 
   executeLogin(analysisId: string, loginFields: any[], targetUrl: string, submitSelector: string, flags?: { human_breakpoint?: boolean }): Observable<any> {

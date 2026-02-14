@@ -265,9 +265,14 @@ class TaskExecutor:
                         "form_type": form_def.form_type,
                     })
 
-                    # Navigate to page
-                    await page.goto(form_def.page_url, wait_until="networkidle", timeout=30000)
-                    await page.wait_for_timeout(1000)
+                    # Navigate with resilient waits; "networkidle" can block on
+                    # modern pages that keep background connections open.
+                    await page.goto(form_def.page_url, wait_until="domcontentloaded", timeout=45000)
+                    try:
+                        await page.wait_for_load_state("load", timeout=15000)
+                    except Exception:
+                        pass
+                    await page.wait_for_timeout(800)
 
                     step_info["navigated"] = True
 
@@ -381,8 +386,11 @@ class TaskExecutor:
                     # Submit form
                     try:
                         await page.click(form_def.submit_selector)
-                        await page.wait_for_load_state("networkidle", timeout=15000)
-                        await page.wait_for_timeout(1000)
+                        try:
+                            await page.wait_for_load_state("load", timeout=15000)
+                        except Exception:
+                            await page.wait_for_timeout(2000)
+                        await page.wait_for_timeout(800)
                         step_info["status"] = "submitted"
                     except Exception as e:
                         step_info["status"] = "submit_error"

@@ -95,3 +95,13 @@ export interface LoginExecutionCompleteEvent {
   target_result?: any;
   target_fields?: any[];
 }
+
+export interface StepNavigationStateEvent {
+  analysis_id: string;
+  status: 'started' | 'completed' | 'failed';
+  step?: number;
+  url: string;
+  request_id?: string;
+  message?: string;
+  error?: string;
+}

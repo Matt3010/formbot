@@ -13,6 +13,7 @@ import {
   EditorMode, EditorPhase, EditorField, EditingStep, UserCorrections,
   HighlightingReadyEvent, FieldSelectedEvent, FieldAddedEvent, FieldRemovedEvent,
   FieldValueChangedEvent, LoginExecutionProgressEvent, LoginExecutionCompleteEvent,
+  StepNavigationStateEvent,
 } from '../../../core/models/vnc-editor.model';
 import { VncModeToolbarComponent } from './vnc-mode-toolbar.component';
 import { VncFieldListComponent } from './vnc-field-list.component';
@@ -41,11 +42,11 @@ import { VncStepTabsComponent } from './vnc-step-tabs.component';
       </div>
     } @else if (vncUrl()) {
       <div class="viewer-toolbar">
-        <button mat-stroked-button (click)="toggleEditorHidden()">
+        <button mat-stroked-button (click)="toggleEditorHidden()" [disabled]="navigatingStep()">
           <mat-icon>{{ editorHidden() ? 'view_sidebar' : 'desktop_windows' }}</mat-icon>
           {{ editorHidden() ? 'Show Editor' : 'Focus VNC' }}
         </button>
-        <button mat-stroked-button (click)="resetSplit()">
+        <button mat-stroked-button (click)="resetSplit()" [disabled]="navigatingStep()">
           <mat-icon>space_dashboard</mat-icon>
           Reset Layout
         </button>
@@ -56,6 +57,7 @@ import { VncStepTabsComponent } from './vnc-step-tabs.component';
         @if (!editorHidden()) {
           <app-vnc-mode-toolbar
             [mode]="currentMode()"
+            [disabled]="navigatingStep()"
             (modeChanged)="onModeChanged($event)"
           />
         }
@@ -68,6 +70,14 @@ import { VncStepTabsComponent } from './vnc-step-tabs.component';
             frameborder="0"
             allow="clipboard-read; clipboard-write">
           </iframe>
+          @if (navigatingStep()) {
+            <div class="vnc-loading-overlay">
+              <div class="vnc-loading-content">
+                <mat-spinner diameter="30"></mat-spinner>
+                <p>{{ navigationMessage() }}</p>
+              </div>
+            </div>
+          }
         </div>
 
         <!-- Divider (draggable) -->
@@ -77,11 +87,12 @@ import { VncStepTabsComponent } from './vnc-step-tabs.component';
 
         <!-- Editor Panel -->
         @if (!editorHidden()) {
-        <div class="editor-panel" [style.flex-grow]="100 - splitPosition()">
+        <div class="editor-panel" [style.flex-grow]="100 - splitPosition()" [class.panel-busy]="navigatingStep()">
           <!-- Step tabs for multi-step -->
           <app-vnc-step-tabs
             [steps]="steps()"
             [activeStep]="activeStepIndex()"
+            [disabled]="navigatingStep()"
             (stepChanged)="onStepChanged($event)"
           />
 
@@ -89,6 +100,7 @@ import { VncStepTabsComponent } from './vnc-step-tabs.component';
           <div class="step-flags">
             <mat-slide-toggle
               [checked]="currentStepBreakpoint()"
+              [disabled]="navigatingStep()"
               (change)="onBreakpointToggle($event.checked)"
               color="warn">
               <mat-icon class="bp-icon">flag</mat-icon>
@@ -140,14 +152,17 @@ import { VncStepTabsComponent } from './vnc-step-tabs.component';
                 </button>
               }
             } @else {
-              <button mat-raised-button color="primary" (click)="onConfirmAll()" [disabled]="confirming()">
+              <button mat-stroked-button (click)="onAddTargetStep()" [disabled]="navigatingStep()">
+                <mat-icon>add</mat-icon> Add Target Step
+              </button>
+              <button mat-raised-button color="primary" (click)="onConfirmAll()" [disabled]="confirming() || navigatingStep()">
                 @if (confirming()) {
                   <mat-spinner diameter="18"></mat-spinner>
                 } @else {
                   <mat-icon>check</mat-icon> Confirm All
                 }
               </button>
-              <button mat-stroked-button (click)="onCancel()">
+              <button mat-stroked-button (click)="onCancel()" [disabled]="navigatingStep()">
                 <mat-icon>close</mat-icon> Cancel
               </button>
             }
@@ -158,7 +173,7 @@ import { VncStepTabsComponent } from './vnc-step-tabs.component';
     } @else {
       <div class="error-state">
         <mat-icon>error</mat-icon>
-        <p>Failed to initialize VNC session.</p>
+        <p>{{ initError() || 'Failed to initialize VNC session.' }}</p>
       </div>
     }
   `,
@@ -197,6 +212,29 @@ import { VncStepTabsComponent } from './vnc-step-tabs.component';
       height: 100%;
       border: none;
     }
+    .vnc-loading-overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(10, 10, 10, 0.72);
+      pointer-events: all;
+    }
+    .vnc-loading-content {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      color: #fff;
+      text-align: center;
+      font-size: 14px;
+      padding: 0 20px;
+    }
+    .vnc-loading-content p {
+      margin: 0;
+    }
     .divider {
       width: 6px;
       background: #e0e0e0;
@@ -211,6 +249,10 @@ import { VncStepTabsComponent } from './vnc-step-tabs.component';
       overflow: hidden;
       background: #fafafa;
       min-width: 0;
+    }
+    .editor-panel.panel-busy {
+      pointer-events: none;
+      opacity: 0.78;
     }
     .field-list-section {
       flex: 1;
@@ -311,6 +353,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
   private _suppressValueSync = false;
 
   loading = signal(true);
+  initError = signal<string | null>(null);
   vncUrl = signal<string | null>(null);
   splitPosition = signal(65);
   editorHidden = signal(false);
@@ -326,6 +369,8 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
   loginExecuting = signal(false);
   loginProgress = signal('');
   captchaWaiting = signal(false);
+  navigatingStep = signal(false);
+  navigationMessage = signal('Loading next target page...');
 
   // Computed-like signals
   currentFields = signal<EditorField[]>([]);
@@ -336,6 +381,8 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
   private boundMouseMove = this.onDrag.bind(this);
   private boundMouseUp = this.stopDrag.bind(this);
   private sessionExpired = false;
+  private pendingNavigationRequestId: string | null = null;
+  private pendingNavigationPreviousIndex: number | null = null;
 
   ngOnInit() {
     // Set initial phase based on login requirement
@@ -350,6 +397,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
 
     channel.bind('HighlightingReady', (data: HighlightingReadyEvent) => {
       this.loading.set(false);
+      this.initError.set(null);
       this.vncUrl.set(data.vnc_url);
 
       // If resuming from a saved draft, use those corrections instead of fresh AI result
@@ -411,6 +459,18 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
       } else {
         this.loginProgress.set(`Login failed: ${data.error || 'Unknown error'}`);
         this.currentPhase.set('login');
+      }
+    });
+
+    channel.bind('StepNavigationState', (data: StepNavigationStateEvent) => {
+      this.handleStepNavigationEvent(data);
+    });
+
+    channel.bind('AnalysisCompleted', (data: any) => {
+      // Interactive analyze bootstrap failed before VNC was ready.
+      if (!this.vncUrl() && data?.error) {
+        this.loading.set(false);
+        this.initError.set(`Failed to initialize VNC session: ${data.error}`);
       }
     });
 
@@ -544,12 +604,18 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
   // --- Field operations ---
 
   onFieldSelected(index: number) {
+    if (this.navigatingStep()) {
+      return;
+    }
     this.selectedFieldIndex.set(index);
     this.updateSelectedField();
     this.editorService.focusField(this.analysisId(), index).subscribe();
   }
 
   onFieldChanged(updatedField: EditorField) {
+    if (this.navigatingStep()) {
+      return;
+    }
     const stepIdx = this.activeStepIndex();
     const fieldIdx = this.selectedFieldIndex();
     const stepsClone = structuredClone(this.steps());
@@ -573,6 +639,9 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
   }
 
   onFieldsReordered(fields: EditorField[]) {
+    if (this.navigatingStep()) {
+      return;
+    }
     const stepIdx = this.activeStepIndex();
     const stepsClone = structuredClone(this.steps());
     stepsClone[stepIdx].fields = fields;
@@ -585,6 +654,9 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
   }
 
   onTestSelector(selector: string) {
+    if (this.navigatingStep()) {
+      return;
+    }
     this.editorService.testSelector(this.analysisId(), selector).subscribe({
       next: (result) => {
         if (this.fieldDetail) {
@@ -661,17 +733,136 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
 
   // --- Multi-step ---
 
-  onStepChanged(index: number) {
+  onStepChanged(index: number, onReady?: () => void) {
+    const allSteps = this.steps();
+    if (this.navigatingStep()) {
+      return;
+    }
+    if (index < 0 || index >= allSteps.length) {
+      return;
+    }
+
+    const previousIndex = this.activeStepIndex();
+    if (index === previousIndex) {
+      return;
+    }
+
+    this.setActiveStepState(index);
+    const targetStep = allSteps[index];
+    this.startNavigationWait(targetStep?.page_url);
+
+    if (targetStep?.page_url) {
+      const requestId = crypto.randomUUID();
+      this.pendingNavigationRequestId = requestId;
+      this.pendingNavigationPreviousIndex = previousIndex;
+
+      this.editorService.navigateStep(this.analysisId(), index, targetStep.page_url, requestId).subscribe({
+        next: () => {
+          this.applyStepFieldsAfterNavigation(requestId, onReady);
+        },
+        error: (err) => {
+          if (this.pendingNavigationRequestId !== requestId) {
+            return;
+          }
+          const fallbackPrevious = this.pendingNavigationPreviousIndex;
+          this.clearPendingNavigation();
+          this.finishNavigationWait();
+          this.handleSessionError(err);
+          if (fallbackPrevious != null) {
+            this.restoreStepAfterNavigationError(fallbackPrevious);
+          }
+        },
+      });
+      return;
+    }
+
+    this.applyStepFieldsAfterNavigation(undefined, onReady);
+  }
+
+  private setActiveStepState(index: number) {
     this.activeStepIndex.set(index);
     this.selectedFieldIndex.set(-1);
     this.selectedField.set(null);
     this.updateCurrentFields();
     this.currentStepBreakpoint.set(this.steps()[index]?.human_breakpoint ?? false);
+  }
 
-    const step = this.steps()[index];
-    if (step?.page_url) {
-      this.editorService.navigateStep(this.analysisId(), index, step.page_url).subscribe();
+  private startNavigationWait(pageUrl?: string) {
+    const message = pageUrl
+      ? `Navigating to ${pageUrl}...`
+      : 'Preparing step...';
+    this.navigationMessage.set(message);
+    this.navigatingStep.set(true);
+  }
+
+  private finishNavigationWait() {
+    this.navigatingStep.set(false);
+    this.navigationMessage.set('Loading next target page...');
+  }
+
+  private clearPendingNavigation() {
+    this.pendingNavigationRequestId = null;
+    this.pendingNavigationPreviousIndex = null;
+  }
+
+  private applyStepFieldsAfterNavigation(requestId?: string, onReady?: () => void) {
+    if (requestId && this.pendingNavigationRequestId && this.pendingNavigationRequestId !== requestId) {
+      return;
     }
+    const step = this.steps()[this.activeStepIndex()];
+    this.editorService.updateFields(this.analysisId(), step?.fields || []).subscribe({
+      next: () => {
+        this.clearPendingNavigation();
+        this.finishNavigationWait();
+        onReady?.();
+      },
+      error: (err) => {
+        this.clearPendingNavigation();
+        this.finishNavigationWait();
+        this.handleSessionError(err);
+      },
+    });
+  }
+
+  private handleStepNavigationEvent(data: StepNavigationStateEvent) {
+    if (!this.pendingNavigationRequestId) {
+      return;
+    }
+    if (data.request_id && data.request_id !== this.pendingNavigationRequestId) {
+      return;
+    }
+
+    if (data.status === 'started') {
+      this.navigationMessage.set(data.message || `Navigating to ${data.url}...`);
+      this.navigatingStep.set(true);
+      return;
+    }
+
+    if (data.status === 'completed') {
+      this.applyStepFieldsAfterNavigation(data.request_id);
+      return;
+    }
+
+    if (data.status === 'failed') {
+      const previousIndex = this.pendingNavigationPreviousIndex;
+      this.clearPendingNavigation();
+      this.finishNavigationWait();
+      if (previousIndex != null) {
+        this.restoreStepAfterNavigationError(previousIndex);
+      }
+      return;
+    }
+  }
+
+  private restoreStepAfterNavigationError(index: number) {
+    if (index < 0 || index >= this.steps().length) {
+      return;
+    }
+    this.setActiveStepState(index);
+    const previousStep = this.steps()[index];
+    this.editorService.updateFields(this.analysisId(), previousStep?.fields || []).subscribe({
+      error: (err) => this.handleSessionError(err),
+    });
   }
 
   onBreakpointToggle(value: boolean) {
@@ -683,6 +874,51 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
       this.currentStepBreakpoint.set(value);
       this.draftSave$.next();
     }
+  }
+
+  onAddTargetStep() {
+    if (this.currentPhase() !== 'target' || this.navigatingStep()) {
+      return;
+    }
+
+    const currentStep = this.steps()[this.activeStepIndex()];
+    const suggestedUrl = (currentStep?.page_url || this.targetUrl() || '').trim();
+    const enteredUrl = window.prompt('Target page URL for the new step', suggestedUrl);
+    if (enteredUrl === null) {
+      return;
+    }
+
+    const pageUrl = enteredUrl.trim() || suggestedUrl;
+    if (!pageUrl) {
+      return;
+    }
+
+    const stepsClone = structuredClone(this.steps());
+    const nextStepOrder = stepsClone.reduce((max, step) => Math.max(max, step.step_order), -1) + 1;
+    const loginStep = stepsClone.find(step => step.form_type === 'login');
+    const fallbackDependency = stepsClone.length > 0 ? stepsClone[stepsClone.length - 1].step_order : null;
+
+    const newTargetStep: EditingStep = {
+      step_order: nextStepOrder,
+      depends_on_step_order: loginStep?.step_order ?? fallbackDependency,
+      page_url: pageUrl,
+      form_type: 'target',
+      form_selector: '',
+      submit_selector: '',
+      human_breakpoint: false,
+      fields: [],
+    };
+
+    stepsClone.push(newTargetStep);
+    this.steps.set(stepsClone);
+    this.draftSave$.next();
+
+    const autoSetAddMode = !this.userSelectedMode();
+    this.onStepChanged(stepsClone.length - 1, () => {
+      if (autoSetAddMode) {
+        this.onModeChanged('add', false);
+      }
+    });
   }
 
   // --- Login phase ---
@@ -781,11 +1017,19 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
     if (!this.userSelectedMode()) {
       this.onModeChanged('add', false);
     }
+
+    const activeStep = stepsClone[this.activeStepIndex()];
+    this.editorService.updateFields(this.analysisId(), activeStep?.fields || []).subscribe({
+      error: (err) => this.handleSessionError(err),
+    });
   }
 
   // --- Confirm / Cancel ---
 
   onConfirmAll() {
+    if (this.navigatingStep()) {
+      return;
+    }
     this.confirming.set(true);
     const corrections = this.buildCorrections();
 
@@ -804,6 +1048,9 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
   }
 
   onCancel() {
+    if (this.navigatingStep()) {
+      return;
+    }
     this.editorService.cancelEditing(this.analysisId()).subscribe({
       next: () => this.cancelled.emit(),
       error: () => this.cancelled.emit(),
@@ -820,6 +1067,9 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
   // --- Helpers ---
 
   private handleSessionError(err: any) {
+    if (err?.status === 409) {
+      return;
+    }
     if (err.status === 404 && !this.sessionExpired) {
       this.sessionExpired = true;
       alert('VNC session expired or lost. The editor will close.');

@@ -11,7 +11,7 @@ import { EditingStep } from '../../../core/models/vnc-editor.model';
     @if (steps().length > 1) {
       <mat-tab-group [selectedIndex]="activeStep()" (selectedIndexChange)="stepChanged.emit($event)">
         @for (step of steps(); track step.step_order; let i = $index) {
-          <mat-tab>
+          <mat-tab [disabled]="disabled()">
             <ng-template matTabLabel>
               <div class="step-tab-label">
                 {{ i + 1 }}. {{ step.form_type | titlecase }}
@@ -33,5 +33,6 @@ import { EditingStep } from '../../../core/models/vnc-editor.model';
 export class VncStepTabsComponent {
   steps = input<EditingStep[]>([]);
   activeStep = input<number>(0);
+  disabled = input<boolean>(false);
   stepChanged = output<number>();
 }

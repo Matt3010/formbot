@@ -11,6 +11,7 @@ import { EditorMode } from '../../../core/models/vnc-editor.model';
     <div class="toolbar-strip">
       @for (btn of buttons; track btn.value) {
         <button
+          [disabled]="disabled()"
           [class.active]="mode() === btn.value"
           (click)="modeChanged.emit(btn.value)"
           [matTooltip]="btn.tooltip"
@@ -45,6 +46,10 @@ import { EditorMode } from '../../../core/models/vnc-editor.model';
       cursor: pointer;
       transition: all 0.15s;
     }
+    button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
     button:hover {
       background: rgba(255,255,255,0.1);
       color: white;
@@ -58,6 +63,7 @@ import { EditorMode } from '../../../core/models/vnc-editor.model';
 })
 export class VncModeToolbarComponent {
   mode = input<EditorMode>('view');
+  disabled = input<boolean>(false);
   modeChanged = output<EditorMode>();
 
   buttons: { value: EditorMode; icon: string; tooltip: string }[] = [

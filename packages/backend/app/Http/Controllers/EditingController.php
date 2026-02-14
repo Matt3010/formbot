@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\ScraperRequestException;
 use App\Events\TaskStatusChanged;
 use App\Models\Analysis;
 use App\Models\FormDefinition;
@@ -145,6 +146,8 @@ class EditingController extends Controller
             );
 
             return response()->json($result);
+        } catch (ScraperRequestException $e) {
+            return response()->json(['message' => $e->getMessage()], $e->statusCode());
         } catch (\Exception $e) {
             return response()->json(['message' => 'Command failed: ' . $e->getMessage()], 500);
         }
@@ -269,6 +272,8 @@ class EditingController extends Controller
             );
 
             return response()->json($result);
+        } catch (ScraperRequestException $e) {
+            return response()->json(['message' => $e->getMessage()], $e->statusCode());
         } catch (\Exception $e) {
             Log::error('Failed to execute login in session', [
                 'analysis_id' => $analysis->id,
@@ -288,6 +293,8 @@ class EditingController extends Controller
         try {
             $result = $scraperClient->resumeLoginInSession($analysis->id);
             return response()->json($result);
+        } catch (ScraperRequestException $e) {
+            return response()->json(['message' => $e->getMessage()], $e->statusCode());
         } catch (\Exception $e) {
             return response()->json(['message' => 'Resume failed: ' . $e->getMessage()], 500);
         }
@@ -327,12 +334,15 @@ class EditingController extends Controller
         $request->validate([
             'step' => ['required', 'integer', 'min:0'],
             'url' => ['required', 'url'],
+            'request_id' => ['sometimes', 'string', 'max:120'],
         ]);
 
         try {
             $result = $scraperClient->navigateEditingStep(
                 analysisId: $analysis->id,
                 url: $request->input('url'),
+                step: $request->integer('step'),
+                requestId: $request->input('request_id'),
             );
 
             $analysis->update([
@@ -340,6 +350,8 @@ class EditingController extends Controller
             ]);
 
             return response()->json($result);
+        } catch (ScraperRequestException $e) {
+            return response()->json(['message' => $e->getMessage()], $e->statusCode());
         } catch (\Exception $e) {
             return response()->json(['message' => 'Navigation failed: ' . $e->getMessage()], 500);
         }

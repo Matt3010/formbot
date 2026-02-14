@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\ScraperRequestException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -190,8 +191,11 @@ class ScraperClient
             ));
 
         if (!$response->successful()) {
-            throw new \RuntimeException(
-                "Editing command '{$command}' failed: " . ($response->json('detail') ?? $response->body())
+            $detail = $response->json('detail') ?? $response->body();
+            $message = is_array($detail) ? json_encode($detail) : (string) $detail;
+            throw new ScraperRequestException(
+                "Editing command '{$command}' failed: {$message}",
+                $response->status(),
             );
         }
 
@@ -243,7 +247,10 @@ class ScraperClient
         if (!$response->successful()) {
             $detail = $response->json('detail') ?? $response->body();
             $message = is_array($detail) ? json_encode($detail) : (string) $detail;
-            throw new \RuntimeException('Failed to execute login in session: ' . $message);
+            throw new ScraperRequestException(
+                'Failed to execute login in session: ' . $message,
+                $response->status(),
+            );
         }
 
         return $response->json();
@@ -260,8 +267,11 @@ class ScraperClient
             ]);
 
         if (!$response->successful()) {
-            throw new \RuntimeException(
-                'Failed to resume login: ' . ($response->json('detail') ?? $response->body())
+            $detail = $response->json('detail') ?? $response->body();
+            $message = is_array($detail) ? json_encode($detail) : (string) $detail;
+            throw new ScraperRequestException(
+                'Failed to resume login: ' . $message,
+                $response->status(),
             );
         }
 
@@ -271,17 +281,29 @@ class ScraperClient
     /**
      * Navigate to a different step URL during editing.
      */
-    public function navigateEditingStep(string $analysisId, string $url): array
+    public function navigateEditingStep(string $analysisId, string $url, ?int $step = null, ?string $requestId = null): array
     {
+        $payload = [
+            'analysis_id' => $analysisId,
+            'url' => $url,
+        ];
+
+        if ($step !== null) {
+            $payload['step'] = $step;
+        }
+        if ($requestId) {
+            $payload['request_id'] = $requestId;
+        }
+
         $response = Http::timeout(30)
-            ->post("{$this->baseUrl}/editing/navigate", [
-                'analysis_id' => $analysisId,
-                'url' => $url,
-            ]);
+            ->post("{$this->baseUrl}/editing/navigate", $payload);
 
         if (!$response->successful()) {
-            throw new \RuntimeException(
-                'Failed to navigate editing step: ' . ($response->json('detail') ?? $response->body())
+            $detail = $response->json('detail') ?? $response->body();
+            $message = is_array($detail) ? json_encode($detail) : (string) $detail;
+            throw new ScraperRequestException(
+                'Failed to navigate editing step: ' . $message,
+                $response->status(),
             );
         }
 

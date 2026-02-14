@@ -29,6 +29,7 @@ class HighlighterSession:
     fields: list = field(default_factory=list)
     resume_event: asyncio.Event = field(default_factory=asyncio.Event)
     executing: bool = False
+    navigating: bool = False
 
 
 class HighlighterRegistry:

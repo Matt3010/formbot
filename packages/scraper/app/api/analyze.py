@@ -55,9 +55,15 @@ async def analyze_url_interactive(request: InteractiveAnalyzeRequest):
             await apply_stealth(context)
             page = await context.new_page()
 
-            # Navigate
-            await page.goto(request.url, wait_until="networkidle", timeout=30000)
-            await page.wait_for_timeout(2000)
+            # Navigate using resilient waits. "networkidle" can hang on pages
+            # with long-lived connections (analytics, websockets, etc.).
+            await page.goto(request.url, wait_until="domcontentloaded", timeout=45000)
+            try:
+                await page.wait_for_load_state("load", timeout=15000)
+            except Exception:
+                # Best effort only.
+                pass
+            await page.wait_for_timeout(1000)
 
             # Use existing result or create empty one
             if request.analysis_result:

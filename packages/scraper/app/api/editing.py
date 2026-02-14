@@ -50,6 +50,8 @@ class SessionRequest(BaseModel):
 class NavigateRequest(BaseModel):
     analysis_id: str
     url: str
+    step: Optional[int] = None
+    request_id: Optional[str] = None
 
 
 def _get_session(analysis_id: str):
@@ -60,6 +62,14 @@ def _get_session(analysis_id: str):
     return session
 
 
+def _assert_session_command_ready(session) -> None:
+    """Reject interactive commands while the session is busy."""
+    if session.executing:
+        raise HTTPException(status_code=409, detail="Login execution already in progress")
+    if session.navigating:
+        raise HTTPException(status_code=409, detail="Step navigation already in progress")
+
+
 @router.post("/mode")
 async def set_mode(request: SetModeRequest):
     """Set the interaction mode (view/select/add/remove)."""
@@ -67,6 +77,7 @@ async def set_mode(request: SetModeRequest):
         raise HTTPException(status_code=400, detail="Invalid mode. Must be: view, select, add, remove")
 
     session = _get_session(request.analysis_id)
+    _assert_session_command_ready(session)
     await session.highlighter.set_mode(request.mode)
     return {"status": "ok", "mode": request.mode}
 
@@ -75,6 +86,7 @@ async def set_mode(request: SetModeRequest):
 async def update_fields(request: UpdateFieldsRequest):
     """Update the highlighted fields after panel edits."""
     session = _get_session(request.analysis_id)
+    _assert_session_command_ready(session)
     session.fields = request.fields
     await session.highlighter.update_fields(request.fields)
     return {"status": "ok", "field_count": len(request.fields)}
@@ -84,6 +96,7 @@ async def update_fields(request: UpdateFieldsRequest):
 async def focus_field(request: FocusFieldRequest):
     """Scroll to and flash-highlight a specific field."""
     session = _get_session(request.analysis_id)
+    _assert_session_command_ready(session)
     await session.highlighter.focus_field(request.field_index)
     return {"status": "ok", "field_index": request.field_index}
 
@@ -92,6 +105,7 @@ async def focus_field(request: FocusFieldRequest):
 async def test_selector(request: TestSelectorRequest):
     """Test a CSS selector — flash green if found, red if not."""
     session = _get_session(request.analysis_id)
+    _assert_session_command_ready(session)
     result = await session.highlighter.test_selector(request.selector)
     return {"status": "ok", **result}
 
@@ -100,6 +114,7 @@ async def test_selector(request: TestSelectorRequest):
 async def fill_field(request: FillFieldRequest):
     """Programmatically fill a field's value in the live page."""
     session = _get_session(request.analysis_id)
+    _assert_session_command_ready(session)
     await session.highlighter.fill_field(request.field_index, request.value)
     return {"status": "ok"}
 
@@ -108,6 +123,7 @@ async def fill_field(request: FillFieldRequest):
 async def read_field_value(request: ReadFieldValueRequest):
     """Read the current value of a field from the live page."""
     session = _get_session(request.analysis_id)
+    _assert_session_command_ready(session)
     value = await session.highlighter.read_field_value(request.field_index)
     return {"status": "ok", "value": value}
 
@@ -144,12 +160,56 @@ async def cleanup_editing(request: SessionRequest):
 async def navigate_step(request: NavigateRequest):
     """Navigate the browser to a different URL (for multi-step flows)."""
     session = _get_session(request.analysis_id)
+    broadcaster = Broadcaster.get_instance()
+    if session.executing:
+        raise HTTPException(status_code=409, detail="Login execution already in progress")
+    if session.navigating:
+        raise HTTPException(status_code=409, detail="Step navigation already in progress")
+
+    session.navigating = True
+    broadcaster.trigger_analysis(request.analysis_id, "StepNavigationState", {
+        "status": "started",
+        "step": request.step,
+        "url": request.url,
+        "request_id": request.request_id,
+        "message": f"Navigating to {request.url}...",
+    })
+
     try:
-        await session.page.goto(request.url, wait_until="networkidle", timeout=30000)
-        await session.page.wait_for_timeout(1000)
-        return {"status": "ok", "url": request.url}
+        # Avoid strict network-idle waits: modern apps can keep long-lived
+        # connections open and never become "idle" even when ready.
+        await session.page.goto(request.url, wait_until="domcontentloaded", timeout=45000)
+        try:
+            await session.page.wait_for_load_state("load", timeout=15000)
+        except Exception:
+            # Best effort only: some pages never reach "load" cleanly.
+            pass
+        await session.page.wait_for_timeout(800)
+
+        final_url = getattr(session.page, "url", None)
+        if not isinstance(final_url, str) or not final_url:
+            final_url = request.url
+        broadcaster.trigger_analysis(request.analysis_id, "StepNavigationState", {
+            "status": "completed",
+            "step": request.step,
+            "url": request.url,
+            "final_url": final_url,
+            "request_id": request.request_id,
+            "message": "Target page ready",
+        })
+        return {"status": "ok", "url": request.url, "final_url": final_url}
     except Exception as e:
+        broadcaster.trigger_analysis(request.analysis_id, "StepNavigationState", {
+            "status": "failed",
+            "step": request.step,
+            "url": request.url,
+            "request_id": request.request_id,
+            "message": "Navigation failed",
+            "error": str(e),
+        })
         raise HTTPException(status_code=500, detail=f"Navigation failed: {str(e)}")
+    finally:
+        session.navigating = False
 
 
 class LoginFieldPayload(BaseModel):
@@ -174,6 +234,8 @@ async def execute_login(request: ExecuteLoginRequest):
 
     if session.executing:
         raise HTTPException(status_code=409, detail="Login execution already in progress")
+    if session.navigating:
+        raise HTTPException(status_code=409, detail="Step navigation already in progress")
 
     session.executing = True
 
@@ -192,7 +254,7 @@ async def execute_login(request: ExecuteLoginRequest):
             session.resume_event.clear()
             await session.resume_event.wait()
             try:
-                await page.wait_for_load_state("networkidle", timeout=15000)
+                await page.wait_for_load_state("load", timeout=12000)
             except Exception:
                 await page.wait_for_timeout(3000)
 
@@ -253,10 +315,10 @@ async def execute_login(request: ExecuteLoginRequest):
 
             # Allow time for cookies and redirects
             try:
-                await page.wait_for_load_state("networkidle", timeout=10000)
-                await page.wait_for_timeout(5000)
+                await page.wait_for_load_state("load", timeout=12000)
+                await page.wait_for_timeout(2500)
             except Exception:
-                await page.wait_for_timeout(6000)
+                await page.wait_for_timeout(3500)
 
             # Manual Interventions
             if request.human_breakpoint:
