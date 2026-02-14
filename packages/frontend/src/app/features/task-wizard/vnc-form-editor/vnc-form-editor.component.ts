@@ -999,29 +999,29 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
         }];
 
     // Append target steps after login
+    const firstNewTargetIndex = stepsClone.length; // Index of the first newly added target
     stepsClone.push(...targetSteps);
     this.steps.set(stepsClone);
-
-    // Switch to first target step
-    const targetStepIndex = stepsClone.findIndex(s => s.form_type !== 'login');
-    this.activeStepIndex.set(targetStepIndex >= 0 ? targetStepIndex : stepsClone.length - 1);
-    this.updateCurrentFields();
-    this.selectedFieldIndex.set(-1);
-    this.selectedField.set(null);
 
     // Switch phase
     this.currentPhase.set('target');
     this.loginProgress.set('');
 
-    // Auto-set to 'add' mode so user can immediately start picking fields
-    if (!this.userSelectedMode()) {
-      this.onModeChanged('add', false);
-    }
+    // Navigate to the first newly added target step
+    const targetStepIndex = firstNewTargetIndex;
+    if (targetStepIndex < stepsClone.length) {
+      this.setActiveStepState(targetStepIndex);
 
-    const activeStep = stepsClone[this.activeStepIndex()];
-    this.editorService.updateFields(this.analysisId(), activeStep?.fields || []).subscribe({
-      error: (err) => this.handleSessionError(err),
-    });
+      // Auto-set to 'add' mode so user can immediately start picking fields
+      if (!this.userSelectedMode()) {
+        this.onModeChanged('add', false);
+      }
+
+      const activeStep = stepsClone[targetStepIndex];
+      this.editorService.updateFields(this.analysisId(), activeStep?.fields || []).subscribe({
+        error: (err) => this.handleSessionError(err),
+      });
+    }
   }
 
   // --- Confirm / Cancel ---
