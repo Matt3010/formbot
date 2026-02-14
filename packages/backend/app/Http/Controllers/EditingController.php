@@ -186,6 +186,9 @@ class EditingController extends Controller
             $fd = FormDefinition::create([
                 'task_id' => $task->id,
                 'step_order' => $step['step_order'] ?? 0,
+                'depends_on_step_order' => isset($step['depends_on_step_order']) && $step['depends_on_step_order'] !== ''
+                    ? (int) $step['depends_on_step_order']
+                    : null,
                 'page_url' => $step['page_url'] ?? $analysis->url,
                 'form_type' => $step['form_type'] ?? 'target',
                 'form_selector' => $step['form_selector'] ?? '',

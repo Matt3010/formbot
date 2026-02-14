@@ -25,6 +25,7 @@ export interface FormDefinition {
   id: string;
   task_id: string;
   step_order: number;
+  depends_on_step_order: number | null;
   page_url: string;
   form_type: 'login' | 'intermediate' | 'target';
   form_selector: string;
@@ -50,6 +51,7 @@ export interface FormFieldPayload {
 
 export interface FormDefinitionPayload {
   step_order: number;
+  depends_on_step_order: number | null;
   page_url: string;
   form_type: 'login' | 'intermediate' | 'target';
   form_selector: string | null;

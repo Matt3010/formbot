@@ -458,7 +458,16 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
     const forms = result?.forms || [];
     const editingSteps: EditingStep[] = forms.map((form: any, i: number) => ({
       // Prefer per-form fields from analysis result; fallback to global fields for step 0.
-      step_order: i,
+      step_order: form.step_order ?? i,
+      depends_on_step_order: form.depends_on_step_order ?? (
+        i === 0
+          ? null
+          : (
+              forms[0]?.form_type === 'login'
+                ? (forms[0]?.step_order ?? 0)
+                : (forms[i - 1]?.step_order ?? (i - 1))
+            )
+      ),
       page_url: form.page_url || '',
       form_type: form.form_type || 'target',
       form_selector: form.form_selector || '',
@@ -475,6 +484,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
     if (editingSteps.length === 0) {
       editingSteps.push({
         step_order: 0,
+        depends_on_step_order: null,
         page_url: '',
         form_type: 'target',
         form_selector: '',
@@ -492,6 +502,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
   private initializeFromDraft(corrections: UserCorrections) {
     const editingSteps: EditingStep[] = corrections.steps.map(s => ({
       step_order: s.step_order,
+      depends_on_step_order: s.depends_on_step_order ?? null,
       page_url: s.page_url,
       form_type: s.form_type,
       form_selector: s.form_selector,
@@ -721,12 +732,14 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
 
   private transitionToTargetPhase(targetResult: any, targetFields: any[]) {
     const stepsClone = structuredClone(this.steps());
+    const rootDependency = stepsClone[0]?.step_order ?? null;
 
     // Build target step(s) from result
     const targetForms = targetResult?.forms || [];
     const targetSteps: EditingStep[] = targetForms.length > 0
       ? targetForms.map((form: any, i: number) => ({
           step_order: stepsClone.length + i,
+          depends_on_step_order: rootDependency,
           page_url: form.page_url || this.targetUrl() || '',
           form_type: form.form_type || 'target',
           form_selector: form.form_selector || '',
@@ -740,6 +753,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
         }))
       : [{
           step_order: stepsClone.length,
+          depends_on_step_order: rootDependency,
           page_url: this.targetUrl() || '',
           form_type: 'target' as const,
           form_selector: '',
@@ -908,6 +922,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
       id: `vnc-step-${i}`,
       task_id: '',
       step_order: step.step_order,
+      depends_on_step_order: step.depends_on_step_order ?? null,
       page_url: step.page_url,
       form_type: step.form_type,
       form_selector: step.form_selector,

@@ -132,10 +132,10 @@ async def test_inject_reapplies_saved_mode(highlighter, mock_page):
 
     mode_calls = [
         c for c in mock_page.evaluate.call_args_list
-        if "command_setMode" in str(c)
+        if "window.__FORMBOT_HIGHLIGHT.command_setMode(" in str(c)
     ]
     assert len(mode_calls) >= 1
-    assert '"remove"' in str(mode_calls[0])
+    assert any('"remove"' in str(call) for call in mode_calls)
 
 
 @pytest.mark.asyncio

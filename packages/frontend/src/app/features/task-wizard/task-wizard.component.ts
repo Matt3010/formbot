@@ -17,6 +17,7 @@ import { StepUrlComponent, LoginConfig } from './step-url/step-url.component';
 import { StepScheduleComponent, ScheduleData } from './step-schedule/step-schedule.component';
 import { StepOptionsComponent, TaskOptions } from './step-options/step-options.component';
 import { VncFormEditorComponent } from './vnc-form-editor/vnc-form-editor.component';
+import { WorkflowGraphComponent } from './workflow-graph/workflow-graph.component';
 
 @Component({
   selector: 'app-task-wizard',
@@ -33,6 +34,7 @@ import { VncFormEditorComponent } from './vnc-form-editor/vnc-form-editor.compon
     StepScheduleComponent,
     StepOptionsComponent,
     VncFormEditorComponent,
+    WorkflowGraphComponent,
   ],
   template: `
     <div class="wizard-container vnc-active">
@@ -84,7 +86,29 @@ import { VncFormEditorComponent } from './vnc-form-editor/vnc-form-editor.compon
           </div>
         </mat-step>
 
-        <!-- Step 3: Schedule -->
+        <!-- Step 3: Workflow Graph -->
+        <mat-step [completed]="workflowForms().length > 0">
+          <ng-template matStepLabel>Workflow Graph</ng-template>
+          @if (workflowForms().length > 0) {
+            <app-workflow-graph
+              [forms]="workflowForms()"
+              [editable]="true"
+              (formsChange)="onWorkflowFormsChanged($event)"
+            />
+          } @else {
+            <p>Confirm forms in the visual editor to configure dependencies.</p>
+          }
+          <div class="step-actions mt-2">
+            <button mat-button matStepperPrevious>
+              <mat-icon>arrow_back</mat-icon> Back
+            </button>
+            <button mat-raised-button color="primary" matStepperNext [disabled]="workflowForms().length === 0">
+              Next <mat-icon>arrow_forward</mat-icon>
+            </button>
+          </div>
+        </mat-step>
+
+        <!-- Step 4: Schedule -->
         <mat-step>
           <ng-template matStepLabel>Schedule</ng-template>
           <app-step-schedule
@@ -100,7 +124,7 @@ import { VncFormEditorComponent } from './vnc-form-editor/vnc-form-editor.compon
           </div>
         </mat-step>
 
-        <!-- Step 4: Options -->
+        <!-- Step 5: Options -->
         <mat-step>
           <ng-template matStepLabel>Options</ng-template>
           <app-step-options
@@ -165,6 +189,7 @@ export class TaskWizardComponent implements OnInit {
   taskNameControl = this.fb.nonNullable.control('', Validators.required);
   detectedForms = signal<FormDefinition[]>([]);
   confirmedFromVnc = signal<FormDefinition[]>([]);
+  workflowForms = signal<FormDefinition[]>([]);
   scheduleData = signal<ScheduleData>({ schedule_type: 'once', schedule_cron: null, schedule_at: null });
   taskOptions = signal<TaskOptions>({
     is_dry_run: false,
@@ -257,6 +282,7 @@ export class TaskWizardComponent implements OnInit {
       id: form.id || `temp-${idx}`,
       task_id: '',
       step_order: form.step_order ?? idx + 1,
+      depends_on_step_order: form.depends_on_step_order ?? null,
       page_url: form.page_url || analysis.url,
       form_type: form.form_type || 'target',
       form_selector: form.form_selector || '',
@@ -286,7 +312,7 @@ export class TaskWizardComponent implements OnInit {
       this.loginUrl.set(analysis.login_url);
     }
 
-    this.detectedForms.set(forms);
+    this.detectedForms.set(this.normalizeWorkflowForms(forms));
 
     // Set URL and login config in step-url, then start VNC session
     setTimeout(() => {
@@ -326,8 +352,10 @@ export class TaskWizardComponent implements OnInit {
         const task = res.data;
         this.taskNameControl.setValue(task.name);
         if (task.form_definitions?.length) {
-          this.detectedForms.set(task.form_definitions);
-          this.confirmedFromVnc.set(task.form_definitions);
+          const normalizedForms = this.normalizeWorkflowForms(task.form_definitions);
+          this.detectedForms.set(normalizedForms);
+          this.confirmedFromVnc.set(normalizedForms);
+          this.workflowForms.set(normalizedForms);
         }
         this.scheduleData.set({
           schedule_type: task.schedule_type,
@@ -374,7 +402,11 @@ export class TaskWizardComponent implements OnInit {
   }
 
   onFormsDetected(forms: FormDefinition[]) {
-    this.detectedForms.set(forms);
+    const normalized = this.normalizeWorkflowForms(forms);
+    this.detectedForms.set(normalized);
+    if (this.confirmedFromVnc().length === 0) {
+      this.workflowForms.set(normalized);
+    }
     // Auto-advance to VNC editor as soon as initial forms are available
     if (forms.length > 0 && !this.isEditing()) {
       setTimeout(() => this.proceedToVncEditor());
@@ -437,10 +469,12 @@ export class TaskWizardComponent implements OnInit {
   }
 
   onVncConfirmed(forms: FormDefinition[]) {
-    this.confirmedFromVnc.set(forms);
+    const normalized = this.normalizeWorkflowForms(forms);
+    this.confirmedFromVnc.set(normalized);
+    this.workflowForms.set(normalized);
     this.notify.success('Forms confirmed via visual editor');
 
-    // Advance to Schedule step
+    // Advance to Workflow Graph step
     setTimeout(() => {
       if (this.stepper) {
         this.stepper.selectedIndex = 2;
@@ -451,6 +485,7 @@ export class TaskWizardComponent implements OnInit {
   onVncCancelled() {
     this.vncAnalysisId.set(null);
     this.vncResumeCorrections.set(null);
+    this.workflowForms.set([]);
     this.notify.info('Visual verification cancelled');
   }
 
@@ -462,9 +497,41 @@ export class TaskWizardComponent implements OnInit {
     this.taskOptions.set(opts);
   }
 
+  onWorkflowFormsChanged(forms: FormDefinition[]) {
+    const normalized = this.normalizeWorkflowForms(forms);
+    this.workflowForms.set(normalized);
+    this.confirmedFromVnc.set(normalized);
+  }
+
+  private normalizeWorkflowForms(forms: FormDefinition[]): FormDefinition[] {
+    const sorted = [...forms]
+      .map((form) => ({
+        ...form,
+        depends_on_step_order: form.depends_on_step_order ?? null,
+      }))
+      .sort((a, b) => a.step_order - b.step_order);
+
+    const stepOrders = new Set(sorted.map((form) => form.step_order));
+
+    return sorted.map((form) => {
+      if (form.depends_on_step_order === form.step_order) {
+        return { ...form, depends_on_step_order: null };
+      }
+      if (form.depends_on_step_order !== null && !stepOrders.has(form.depends_on_step_order)) {
+        return { ...form, depends_on_step_order: null };
+      }
+      return form;
+    });
+  }
+
   private buildTaskPayload(status: string): TaskPayload {
-    const forms = this.confirmedFromVnc().length > 0 ? this.confirmedFromVnc() :
-                  this.detectedForms();
+    const forms = this.workflowForms().length > 0
+      ? this.workflowForms()
+      : (
+          this.confirmedFromVnc().length > 0
+            ? this.confirmedFromVnc()
+            : this.detectedForms()
+        );
     const schedule = this.scheduleData();
     const options = this.taskOptions();
 
@@ -476,6 +543,7 @@ export class TaskWizardComponent implements OnInit {
     // Transform forms: rename 'fields' to 'form_fields' for backend
     const formDefs = forms.map(f => ({
       step_order: f.step_order,
+      depends_on_step_order: f.depends_on_step_order ?? null,
       page_url: f.page_url,
       form_type: f.form_type,
       form_selector: f.form_selector || null,

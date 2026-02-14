@@ -18,6 +18,7 @@ export interface EditorField {
 
 export interface EditingStep {
   step_order: number;
+  depends_on_step_order: number | null;
   page_url: string;
   form_type: 'login' | 'intermediate' | 'target';
   form_selector: string;

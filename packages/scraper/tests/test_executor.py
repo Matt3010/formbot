@@ -245,6 +245,64 @@ async def test_execute_multi_step(mock_db, mock_vnc_manager):
 
 
 @pytest.mark.asyncio
+async def test_execute_multi_step_uses_dependency_graph_order(mock_db, mock_vnc_manager):
+    """Steps are executed in dependency order, not only by step_order."""
+    task_id = uuid.uuid4()
+    root_id = uuid.uuid4()
+    late_child_id = uuid.uuid4()
+    middle_child_id = uuid.uuid4()
+
+    task = make_task(id=task_id)
+    root_step = make_form_definition(
+        id=root_id, task_id=task_id, step_order=1,
+        depends_on_step_order=None,
+        page_url="https://example.com/root",
+        form_selector="#root-form", submit_selector="#root-submit",
+        human_breakpoint=False,
+    )
+    # This one has a lower step_order but depends on step 3.
+    late_child_step = make_form_definition(
+        id=late_child_id, task_id=task_id, step_order=2,
+        depends_on_step_order=3,
+        page_url="https://example.com/late-child",
+        form_selector="#late-form", submit_selector="#late-submit",
+        human_breakpoint=False,
+    )
+    middle_child_step = make_form_definition(
+        id=middle_child_id, task_id=task_id, step_order=3,
+        depends_on_step_order=1,
+        page_url="https://example.com/middle-child",
+        form_selector="#middle-form", submit_selector="#middle-submit",
+        human_breakpoint=False,
+    )
+
+    _setup_db_for_task(mock_db, task, [root_step, late_child_step, middle_child_step], {
+        root_id: [],
+        late_child_id: [],
+        middle_child_id: [],
+    })
+
+    page = _make_mock_page()
+    browser = _make_mock_browser(_make_mock_context(page))
+    pw_patch, stealth_patch, context = _build_executor_patches(page, browser)
+
+    with pw_patch, stealth_patch:
+        from app.services.task_executor import TaskExecutor
+
+        executor = TaskExecutor(db=mock_db, vnc_manager=mock_vnc_manager)
+        result = await executor.execute(str(task_id))
+
+    assert result["status"] == "success"
+
+    visited_urls = [call[0][0] for call in page.goto.call_args_list]
+    assert visited_urls == [
+        "https://example.com/root",
+        "https://example.com/middle-child",
+        "https://example.com/late-child",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_execute_dry_run(mock_db, mock_vnc_manager):
     """Dry run stops before final submit and returns dry_run_ok."""
     task_id = uuid.uuid4()

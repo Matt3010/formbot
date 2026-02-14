@@ -297,6 +297,116 @@ class TaskTest extends TestCase
         $this->assertNotNull($passwordField->preset_value);
     }
 
+    public function test_create_task_with_graph_dependencies(): void
+    {
+        $response = $this->postJson('/api/tasks', [
+            'name' => 'Graph Task',
+            'target_url' => 'https://example.com/root',
+            'form_definitions' => [
+                [
+                    'step_order' => 1,
+                    'depends_on_step_order' => null,
+                    'page_url' => 'https://example.com/root',
+                    'form_type' => 'login',
+                    'form_selector' => '#login-form',
+                    'submit_selector' => '#login-submit',
+                    'form_fields' => [],
+                ],
+                [
+                    'step_order' => 2,
+                    'depends_on_step_order' => 1,
+                    'page_url' => 'https://example.com/branch-a',
+                    'form_type' => 'target',
+                    'form_selector' => '#branch-a-form',
+                    'submit_selector' => '#branch-a-submit',
+                    'form_fields' => [],
+                ],
+                [
+                    'step_order' => 3,
+                    'depends_on_step_order' => 1,
+                    'page_url' => 'https://example.com/branch-b',
+                    'form_type' => 'target',
+                    'form_selector' => '#branch-b-form',
+                    'submit_selector' => '#branch-b-submit',
+                    'form_fields' => [],
+                ],
+            ],
+        ]);
+
+        $response->assertStatus(201);
+
+        $formsByStep = collect($response->json('data.form_definitions'))->keyBy('step_order');
+        $this->assertNull($formsByStep->get(1)['depends_on_step_order']);
+        $this->assertEquals(1, $formsByStep->get(2)['depends_on_step_order']);
+        $this->assertEquals(1, $formsByStep->get(3)['depends_on_step_order']);
+
+        $taskId = $response->json('data.id');
+        $this->assertDatabaseHas('form_definitions', [
+            'task_id' => $taskId,
+            'step_order' => 2,
+            'depends_on_step_order' => 1,
+        ]);
+        $this->assertDatabaseHas('form_definitions', [
+            'task_id' => $taskId,
+            'step_order' => 3,
+            'depends_on_step_order' => 1,
+        ]);
+    }
+
+    public function test_create_task_rejects_form_definition_cycles(): void
+    {
+        $response = $this->postJson('/api/tasks', [
+            'name' => 'Cyclic Task',
+            'target_url' => 'https://example.com/form',
+            'form_definitions' => [
+                [
+                    'step_order' => 1,
+                    'depends_on_step_order' => 2,
+                    'page_url' => 'https://example.com/one',
+                    'form_type' => 'target',
+                    'form_fields' => [],
+                ],
+                [
+                    'step_order' => 2,
+                    'depends_on_step_order' => 1,
+                    'page_url' => 'https://example.com/two',
+                    'form_type' => 'target',
+                    'form_fields' => [],
+                ],
+            ],
+        ]);
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors(['form_definitions']);
+    }
+
+    public function test_create_task_rejects_missing_dependency_reference(): void
+    {
+        $response = $this->postJson('/api/tasks', [
+            'name' => 'Missing Dependency Task',
+            'target_url' => 'https://example.com/form',
+            'form_definitions' => [
+                [
+                    'step_order' => 1,
+                    'depends_on_step_order' => null,
+                    'page_url' => 'https://example.com/one',
+                    'form_type' => 'target',
+                    'form_fields' => [],
+                ],
+                [
+                    'step_order' => 2,
+                    'depends_on_step_order' => 99,
+                    'page_url' => 'https://example.com/two',
+                    'form_type' => 'target',
+                    'form_fields' => [],
+                ],
+            ],
+        ]);
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors(['form_definitions.1.depends_on_step_order']);
+    }
+
     public function test_create_task_ignores_legacy_form_definition_keys(): void
     {
         $response = $this->postJson('/api/tasks', [

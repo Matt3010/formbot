@@ -28,6 +28,7 @@ class FormDefinition extends Model
     protected $fillable = [
         'task_id',
         'step_order',
+        'depends_on_step_order',
         'page_url',
         'form_type',
         'form_selector',
@@ -41,6 +42,8 @@ class FormDefinition extends Model
     protected function casts(): array
     {
         return [
+            'step_order' => 'integer',
+            'depends_on_step_order' => 'integer',
             'human_breakpoint' => 'boolean',
         ];
     }

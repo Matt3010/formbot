@@ -78,6 +78,7 @@ class ImportExportTest extends TestCase
         $fd2 = FormDefinition::create([
             'task_id' => $task->id,
             'step_order' => 2,
+            'depends_on_step_order' => 1,
             'page_url' => 'https://example.com/target',
             'form_type' => 'target',
             'form_selector' => '#target-form',
@@ -151,6 +152,7 @@ class ImportExportTest extends TestCase
         $targetFd = collect($data['form_definitions'])->firstWhere('form_type', 'target');
         $this->assertNotNull($targetFd);
         $this->assertTrue($targetFd['human_breakpoint']);
+        $this->assertEquals(1, $targetFd['depends_on_step_order']);
         $this->assertCount(1, $targetFd['form_fields']);
     }
 

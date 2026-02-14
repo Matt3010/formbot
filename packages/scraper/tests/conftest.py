@@ -1,7 +1,7 @@
 """Shared fixtures for FormBot scraper tests."""
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -204,8 +204,8 @@ def make_task(**overrides):
         "custom_user_agent": None,
         "action_delay_ms": 500,
         "cloned_from": None,
-        "created_at": datetime.utcnow(),
-        "updated_at": datetime.utcnow(),
+        "created_at": datetime.now(UTC),
+        "updated_at": datetime.now(UTC),
     }
     defaults.update(overrides)
     obj = MagicMock()
@@ -220,13 +220,14 @@ def make_form_definition(**overrides):
         "id": uuid.uuid4(),
         "task_id": uuid.uuid4(),
         "step_order": 1,
+        "depends_on_step_order": None,
         "page_url": "https://example.com/login",
         "form_type": "login",
         "form_selector": "#login-form",
         "submit_selector": "#submit-btn",
         "human_breakpoint": False,
-        "created_at": datetime.utcnow(),
-        "updated_at": datetime.utcnow(),
+        "created_at": datetime.now(UTC),
+        "updated_at": datetime.now(UTC),
     }
     defaults.update(overrides)
     obj = MagicMock()
@@ -250,8 +251,8 @@ def make_form_field(**overrides):
         "is_required": True,
         "options": None,
         "sort_order": 0,
-        "created_at": datetime.utcnow(),
-        "updated_at": datetime.utcnow(),
+        "created_at": datetime.now(UTC),
+        "updated_at": datetime.now(UTC),
     }
     defaults.update(overrides)
     obj = MagicMock()
@@ -265,7 +266,7 @@ def make_execution_log(**overrides):
     defaults = {
         "id": uuid.uuid4(),
         "task_id": uuid.uuid4(),
-        "started_at": datetime.utcnow(),
+        "started_at": datetime.now(UTC),
         "completed_at": None,
         "status": "running",
         "is_dry_run": False,
@@ -274,7 +275,7 @@ def make_execution_log(**overrides):
         "screenshot_path": None,
         "steps_log": [],
         "vnc_session_id": None,
-        "created_at": datetime.utcnow(),
+        "created_at": datetime.now(UTC),
     }
     defaults.update(overrides)
     obj = MagicMock()

@@ -1,7 +1,7 @@
 import os
 import uuid
 import asyncio
-from datetime import datetime
+from datetime import UTC, datetime
 from playwright.async_api import async_playwright
 from sqlalchemy.orm import Session
 from app.config import settings
@@ -20,6 +20,64 @@ class TaskExecutor:
         self.db = db
         self.vnc_manager = vnc_manager or VNCManager()
         self.broadcaster = Broadcaster.get_instance()
+
+    @staticmethod
+    def _step_sort_key(form_def: FormDefinition) -> tuple[int, str]:
+        return (form_def.step_order, str(form_def.id))
+
+    def _order_form_definitions(self, form_defs: list[FormDefinition]) -> list[FormDefinition]:
+        """Return form definitions in dependency order with a safe linear fallback."""
+        ordered_by_step = sorted(form_defs, key=self._step_sort_key)
+        if len(ordered_by_step) <= 1:
+            return ordered_by_step
+
+        step_to_def: dict[int, FormDefinition] = {}
+        for form_def in ordered_by_step:
+            if form_def.step_order in step_to_def:
+                # Ambiguous dependency target, keep legacy linear behavior.
+                return ordered_by_step
+            step_to_def[form_def.step_order] = form_def
+
+        children: dict[uuid.UUID, list[FormDefinition]] = {form_def.id: [] for form_def in ordered_by_step}
+        indegree: dict[uuid.UUID, int] = {form_def.id: 0 for form_def in ordered_by_step}
+
+        for form_def in ordered_by_step:
+            dependency = getattr(form_def, "depends_on_step_order", None)
+            if dependency is None:
+                continue
+
+            parent = step_to_def.get(dependency)
+            if parent is None or parent.id == form_def.id:
+                # Invalid graph, keep legacy linear behavior.
+                return ordered_by_step
+
+            children[parent.id].append(form_def)
+            indegree[form_def.id] += 1
+
+        for node_id in children:
+            children[node_id].sort(key=self._step_sort_key)
+
+        ready = sorted(
+            [form_def for form_def in ordered_by_step if indegree[form_def.id] == 0],
+            key=self._step_sort_key,
+        )
+        graph_order: list[FormDefinition] = []
+
+        while ready:
+            current = ready.pop(0)
+            graph_order.append(current)
+
+            for child in children[current.id]:
+                indegree[child.id] -= 1
+                if indegree[child.id] == 0:
+                    ready.append(child)
+            ready.sort(key=self._step_sort_key)
+
+        if len(graph_order) != len(ordered_by_step):
+            # Cycle detected, keep linear order to avoid hard failure on legacy data.
+            return ordered_by_step
+
+        return graph_order
 
     def _broadcast(self, event: str, data: dict):
         """Broadcast an execution event if user_id and execution are available."""
@@ -67,7 +125,7 @@ class TaskExecutor:
         if not resumed:
             execution.status = 'failed'
             execution.error_message = f'VNC session timed out waiting for manual intervention ({reason})'
-            execution.completed_at = datetime.utcnow()
+            execution.completed_at = datetime.now(UTC)
             execution.steps_log = steps_log
             self.db.commit()
 
@@ -118,18 +176,18 @@ class TaskExecutor:
             if not execution:
                 raise ValueError(f"Execution {execution_id} not found")
             execution.status = 'running'
-            execution.started_at = datetime.utcnow()
+            execution.started_at = datetime.now(UTC)
             execution.steps_log = []
             self.db.commit()
         else:
             execution = ExecutionLog(
                 id=uuid.uuid4(),
                 task_id=task.id,
-                started_at=datetime.utcnow(),
+                started_at=datetime.now(UTC),
                 status='running',
                 is_dry_run=is_dry_run,
                 steps_log=[],
-                created_at=datetime.utcnow()
+                created_at=datetime.now(UTC)
             )
             self.db.add(execution)
             self.db.commit()
@@ -141,16 +199,17 @@ class TaskExecutor:
             "task_id": str(task.id),
             "status": "running",
             "is_dry_run": is_dry_run,
-            "started_at": datetime.utcnow().isoformat(),
+            "started_at": datetime.now(UTC).isoformat(),
         })
 
         steps_log = []
 
         # Check if any form needs VNC manual breakpoint - if so, use headed mode on Xvfb
-        form_defs = (self.db.query(FormDefinition)
+        raw_form_defs = (self.db.query(FormDefinition)
             .filter(FormDefinition.task_id == task.id)
             .order_by(FormDefinition.step_order)
             .all())
+        form_defs = self._order_form_definitions(raw_form_defs)
 
         needs_vnc = any(fd.human_breakpoint for fd in form_defs)
 
@@ -190,10 +249,11 @@ class TaskExecutor:
                 for i, form_def in enumerate(form_defs):
                     step_info = {
                         "step": form_def.step_order,
+                        "depends_on_step_order": form_def.depends_on_step_order,
                         "page_url": form_def.page_url,
                         "form_type": form_def.form_type,
                         "status": "started",
-                        "timestamp": datetime.utcnow().isoformat()
+                        "timestamp": datetime.now(UTC).isoformat()
                     }
 
                     # Broadcast step started
@@ -301,7 +361,7 @@ class TaskExecutor:
 
                         execution.status = 'dry_run_ok'
                         execution.screenshot_path = screenshot_name
-                        execution.completed_at = datetime.utcnow()
+                        execution.completed_at = datetime.now(UTC)
                         execution.steps_log = steps_log
                         self.db.commit()
 
@@ -350,7 +410,7 @@ class TaskExecutor:
             # Update execution log - success
             execution.status = 'success'
             execution.screenshot_path = screenshot_name
-            execution.completed_at = datetime.utcnow()
+            execution.completed_at = datetime.now(UTC)
             execution.steps_log = steps_log
             self.db.commit()
 
@@ -370,7 +430,7 @@ class TaskExecutor:
             # Update execution log - failed
             execution.status = 'failed'
             execution.error_message = str(e)
-            execution.completed_at = datetime.utcnow()
+            execution.completed_at = datetime.now(UTC)
             execution.steps_log = steps_log
             self.db.commit()
 

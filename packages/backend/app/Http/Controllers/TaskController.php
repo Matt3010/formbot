@@ -14,11 +14,13 @@ use App\Services\CryptoService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Validation\ValidationException;
 
 class TaskController extends Controller
 {
     private const FORM_DEFINITION_KEYS = [
         'step_order',
+        'depends_on_step_order',
         'page_url',
         'form_type',
         'form_selector',
@@ -302,12 +304,27 @@ class TaskController extends Controller
      */
     private function persistFormDefinitions(Task $task, array $formDefinitions): void
     {
-        foreach ($formDefinitions as $fdData) {
-            $fieldsData = is_array($fdData['form_fields'] ?? null) ? $fdData['form_fields'] : [];
-            $sanitizedDefinition = $this->sanitizeFormDefinitionData((array) $fdData, $task->id);
+        $normalized = [];
 
-            $formDefinition = FormDefinition::create($sanitizedDefinition);
-            $this->persistFormFields($formDefinition, $fieldsData);
+        foreach ($formDefinitions as $index => $fdData) {
+            if (!is_array($fdData)) {
+                continue;
+            }
+
+            $fieldsData = is_array($fdData['form_fields'] ?? null) ? $fdData['form_fields'] : [];
+            $sanitizedDefinition = $this->sanitizeFormDefinitionData($fdData, $task->id, $index);
+
+            $normalized[] = [
+                'definition' => $sanitizedDefinition,
+                'fields' => $fieldsData,
+            ];
+        }
+
+        $this->validateFormDefinitionGraph(array_column($normalized, 'definition'));
+
+        foreach ($normalized as $entry) {
+            $formDefinition = FormDefinition::create($entry['definition']);
+            $this->persistFormFields($formDefinition, $entry['fields']);
         }
     }
 
@@ -324,12 +341,117 @@ class TaskController extends Controller
         }
     }
 
-    private function sanitizeFormDefinitionData(array $fdData, string $taskId): array
+    private function sanitizeFormDefinitionData(array $fdData, string $taskId, int $fallbackStepOrder): array
     {
         $sanitized = collect($fdData)->only(self::FORM_DEFINITION_KEYS)->toArray();
         $sanitized['task_id'] = $taskId;
+        $sanitized['step_order'] = (int) ($sanitized['step_order'] ?? $fallbackStepOrder);
+
+        if (
+            !array_key_exists('depends_on_step_order', $sanitized)
+            || $sanitized['depends_on_step_order'] === ''
+            || $sanitized['depends_on_step_order'] === null
+        ) {
+            $sanitized['depends_on_step_order'] = null;
+        } else {
+            $sanitized['depends_on_step_order'] = (int) $sanitized['depends_on_step_order'];
+        }
 
         return $sanitized;
+    }
+
+    private function validateFormDefinitionGraph(array $definitions): void
+    {
+        if ($definitions === []) {
+            return;
+        }
+
+        $errors = [];
+        $stepToIndex = [];
+        $dependencyByStep = [];
+
+        foreach ($definitions as $index => $definition) {
+            $stepOrder = $definition['step_order'];
+            $dependency = $definition['depends_on_step_order'];
+
+            if (isset($stepToIndex[$stepOrder])) {
+                $errors["form_definitions.{$index}.step_order"][] = 'step_order must be unique.';
+                continue;
+            }
+
+            $stepToIndex[$stepOrder] = $index;
+
+            if ($dependency === null) {
+                $dependencyByStep[$stepOrder] = null;
+                continue;
+            }
+
+            if ($dependency === $stepOrder) {
+                $errors["form_definitions.{$index}.depends_on_step_order"][] = 'A step cannot depend on itself.';
+            }
+
+            $dependencyByStep[$stepOrder] = $dependency;
+        }
+
+        foreach ($dependencyByStep as $stepOrder => $dependency) {
+            if ($dependency === null) {
+                continue;
+            }
+
+            if (!array_key_exists($dependency, $stepToIndex)) {
+                $index = $stepToIndex[$stepOrder] ?? 0;
+                $errors["form_definitions.{$index}.depends_on_step_order"][] = 'depends_on_step_order must match an existing step_order.';
+            }
+        }
+
+        if ($errors === [] && $this->hasDependencyCycle($dependencyByStep)) {
+            $errors['form_definitions'][] = 'Step dependencies contain a cycle.';
+        }
+
+        if ($errors !== []) {
+            throw ValidationException::withMessages($errors);
+        }
+    }
+
+    private function hasDependencyCycle(array $dependencyByStep): bool
+    {
+        $visited = [];
+        $visiting = [];
+
+        foreach (array_keys($dependencyByStep) as $stepOrder) {
+            if ($this->visitDependencyNode($stepOrder, $dependencyByStep, $visiting, $visited)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function visitDependencyNode(
+        int $stepOrder,
+        array $dependencyByStep,
+        array &$visiting,
+        array &$visited,
+    ): bool {
+        if (!empty($visiting[$stepOrder])) {
+            return true;
+        }
+
+        if (!empty($visited[$stepOrder])) {
+            return false;
+        }
+
+        $visiting[$stepOrder] = true;
+        $dependency = $dependencyByStep[$stepOrder] ?? null;
+
+        if ($dependency !== null && $this->visitDependencyNode($dependency, $dependencyByStep, $visiting, $visited)) {
+            return true;
+        }
+
+        unset($visiting[$stepOrder]);
+        $visited[$stepOrder] = true;
+
+        return false;
     }
 
     private function sanitizeFormFieldData(array $fieldData, string $formDefinitionId): array

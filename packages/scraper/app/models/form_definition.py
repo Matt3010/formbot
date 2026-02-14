@@ -10,6 +10,7 @@ class FormDefinition(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     task_id = Column(UUID(as_uuid=True), ForeignKey('tasks.id'), nullable=False)
     step_order = Column(Integer, nullable=False, default=1)
+    depends_on_step_order = Column(Integer, nullable=True)
     page_url = Column(Text, nullable=False)
     form_type = Column(String(50), nullable=True)
     form_selector = Column(Text, nullable=True)
