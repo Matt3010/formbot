@@ -9,10 +9,8 @@ import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { TaskService } from '../../core/services/task.service';
 import { NotificationService } from '../../core/services/notification.service';
-import { AnalysisService } from '../../core/services/analysis.service';
 import { VncEditorService } from '../../core/services/vnc-editor.service';
 import { Task, FormDefinition, TaskPayload } from '../../core/models/task.model';
-import { Analysis } from '../../core/models/analysis.model';
 import { StepUrlComponent, LoginConfig } from './step-url/step-url.component';
 import { StepScheduleComponent, ScheduleData } from './step-schedule/step-schedule.component';
 import { StepOptionsComponent, TaskOptions } from './step-options/step-options.component';
@@ -66,11 +64,11 @@ import { WorkflowGraphComponent } from './workflow-graph/workflow-graph.componen
         <!-- Step 2: Configure Forms (VNC Editor) -->
         <mat-step [completed]="confirmedFromVnc().length > 0">
           <ng-template matStepLabel>Configure Forms</ng-template>
-          @if (vncAnalysisId()) {
-            <!-- Force remount when analysisId changes by using @for with track -->
-            @for (analysisId of [vncAnalysisId()!]; track analysisId) {
+          @if (vncTaskId()) {
+            <!-- Force remount when taskId changes by using @for with track -->
+            @for (taskId of [vncTaskId()!]; track taskId) {
               <app-vnc-form-editor
-                [analysisId]="analysisId"
+                [taskId]="taskId"
                 [analysisResult]="vncAnalysisResult()"
                 [resumeCorrections]="vncResumeCorrections()"
                 [requiresLogin]="requiresLogin()"
@@ -169,7 +167,6 @@ export class TaskWizardComponent implements OnInit, OnDestroy {
   private router = inject(Router);
   private fb = inject(FormBuilder);
   private taskService = inject(TaskService);
-  private analysisService = inject(AnalysisService);
   private notify = inject(NotificationService);
   private vncEditorService = inject(VncEditorService);
 
@@ -184,7 +181,7 @@ export class TaskWizardComponent implements OnInit, OnDestroy {
   loginUrl = signal<string | null>(null);
 
   // VNC editor state
-  vncAnalysisId = signal<string | null>(null);
+  vncTaskId = signal<string | null>(null);
   vncAnalysisResult = signal<any>(null);
   vncResumeCorrections = signal<any>(null);
   vncTargetUrl = signal<string | null>(null);
@@ -239,7 +236,7 @@ export class TaskWizardComponent implements OnInit, OnDestroy {
 
   private resumeVncEditing(analysisId: string, pending: Analysis | null) {
     this.resumingFromAnalysis.set(true);
-    this.vncAnalysisId.set(analysisId);
+    this.vncTaskId.set(analysisId);
 
     // Set URL in step-url and load corrections if we have the analysis data
     if (pending) {
@@ -334,7 +331,7 @@ export class TaskWizardComponent implements OnInit, OnDestroy {
       }
 
       // Start VNC session and advance to Step 2
-      this.vncAnalysisId.set(analysis.id);
+      this.vncTaskId.set(analysis.id);
       this.vncAnalysisResult.set(analysis.result);
       this.taskService.analyzeInteractive(analysis.id).subscribe({
         next: () => {
@@ -424,7 +421,7 @@ export class TaskWizardComponent implements OnInit, OnDestroy {
       return;
     }
 
-    this.vncAnalysisId.set(analysisId);
+    this.vncTaskId.set(analysisId);
     this.vncAnalysisResult.set(null);
 
     // When login is required, pass the login URL so VNC opens the login page.
@@ -498,7 +495,7 @@ export class TaskWizardComponent implements OnInit, OnDestroy {
 
   private cleanupVncSession() {
     // Cancel the VNC editing session if active
-    const currentVncId = this.vncAnalysisId();
+    const currentVncId = this.vncTaskId();
     if (currentVncId) {
       this.vncEditorService.cancelEditing(currentVncId).subscribe({
         error: () => {} // Ignore errors, session might already be closed
@@ -506,7 +503,7 @@ export class TaskWizardComponent implements OnInit, OnDestroy {
     }
 
     // Reset VNC state
-    this.vncAnalysisId.set(null);
+    this.vncTaskId.set(null);
     this.vncResumeCorrections.set(null);
     this.workflowForms.set([]);
   }

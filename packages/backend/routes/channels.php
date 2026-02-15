@@ -1,6 +1,6 @@
 <?php
 
-use App\Models\Analysis;
+use App\Models\Task;
 use Illuminate\Support\Facades\Broadcast;
 
 Broadcast::channel('tasks.{userId}', function ($user, $userId) {
@@ -11,7 +11,7 @@ Broadcast::channel('execution.{executionId}', function ($user, $executionId) {
     return true; // All authenticated users can listen
 });
 
-Broadcast::channel('analysis.{analysisId}', function ($user, $analysisId) {
-    $analysis = Analysis::find($analysisId);
-    return $analysis && $analysis->user_id === $user->id;
+Broadcast::channel('task.{taskId}', function ($user, $taskId) {
+    $task = Task::find($taskId);
+    return $task && $task->user_id === $user->id;
 });

@@ -22,9 +22,9 @@ with open(_SCRIPT_PATH, "r") as _f:
 class FieldHighlighter:
     """Injects visual overlays on form fields in a Playwright Page."""
 
-    def __init__(self, page: Page, analysis_id: str):
+    def __init__(self, page: Page, task_id: str):
         self.page = page
-        self.analysis_id = analysis_id
+        self.task_id = task_id
         self.broadcaster = Broadcaster.get_instance()
         self._exposed = False
         self._fields: list[dict] = []
@@ -138,22 +138,22 @@ class FieldHighlighter:
     async def _on_field_selected(self, data_json: str) -> None:
         """Called when user clicks a field in 'select' mode."""
         data = json.loads(data_json)
-        self.broadcaster.trigger_analysis(self.analysis_id, "FieldSelected", data)
+        self.broadcaster.trigger_task_editing(self.task_id, "FieldSelected", data)
 
     async def _on_field_added(self, data_json: str) -> None:
         """Called when user clicks an element in 'add' mode."""
         data = json.loads(data_json)
-        self.broadcaster.trigger_analysis(self.analysis_id, "FieldAdded", data)
+        self.broadcaster.trigger_task_editing(self.task_id, "FieldAdded", data)
 
     async def _on_field_removed(self, data_json: str) -> None:
         """Called when user clicks a field in 'remove' mode."""
         data = json.loads(data_json)
-        self.broadcaster.trigger_analysis(self.analysis_id, "FieldRemoved", data)
+        self.broadcaster.trigger_task_editing(self.task_id, "FieldRemoved", data)
 
     async def _on_field_value_changed(self, data_json: str) -> None:
         """Called when user types in a tracked field on the live page."""
         data = json.loads(data_json)
-        self.broadcaster.trigger_analysis(self.analysis_id, "FieldValueChanged", data)
+        self.broadcaster.trigger_task_editing(self.task_id, "FieldValueChanged", data)
 
     # ----- Re-injection on navigation -----
 

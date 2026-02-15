@@ -37,9 +37,9 @@ async def stop_vnc(request: VNCStopRequest):
     return result
 
 
-class VNCAnalysisResumeRequest(BaseModel):
+class VNCTaskEditingResumeRequest(BaseModel):
     session_id: str
-    analysis_id: str
+    task_id: str
 
 
 @router.post("/vnc/resume")
@@ -48,8 +48,8 @@ async def resume_vnc(request: VNCResumeRequest):
     return result
 
 
-@router.post("/vnc/resume-analysis")
-async def resume_analysis_vnc(request: VNCAnalysisResumeRequest):
-    """Resume a VNC session during login-aware analysis."""
-    result = await vnc_manager.resume_session(request.session_id, request.analysis_id)
+@router.post("/vnc/resume-task-editing")
+async def resume_task_editing_vnc(request: VNCTaskEditingResumeRequest):
+    """Resume a VNC session during task editing."""
+    result = await vnc_manager.resume_session(request.session_id, request.task_id)
     return result

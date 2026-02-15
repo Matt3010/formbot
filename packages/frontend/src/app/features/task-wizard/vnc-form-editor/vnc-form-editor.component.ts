@@ -350,7 +350,7 @@ import { VncStepTabsComponent } from './vnc-step-tabs.component';
 export class VncFormEditorComponent implements OnInit, OnDestroy {
   @ViewChild(VncFieldDetailComponent) fieldDetail!: VncFieldDetailComponent;
 
-  analysisId = input.required<string>();
+  taskId = input.required<string>();
   analysisResult = input<any>(null);
   resumeCorrections = input<UserCorrections | null>(null);
   requiresLogin = input<boolean>(false);
@@ -406,7 +406,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
     }
 
     // Listen for HighlightingReady via WebSocket
-    const channelName = `private-analysis.${this.analysisId()}`;
+    const channelName = `private-analysis.${this.taskId()}`;
     if (!this.ws['pusher']) this.ws.connect();
     const channel = this.ws['pusher'].subscribe(channelName);
 
@@ -421,7 +421,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
         this.initializeFromDraft(draft);
         // Update highlights in VNC with draft fields
         const activeFields = draft.steps[0]?.fields || [];
-        this.editorService.updateFields(this.analysisId(), activeFields).subscribe({
+        this.editorService.updateFields(this.taskId(), activeFields).subscribe({
           error: (err) => this.handleSessionError(err)
         });
       } else {
@@ -438,7 +438,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
       this.selectedFieldIndex.set(data.index);
       this.updateSelectedField();
       // Read the current live value and sync into the panel
-      this.editorService.readFieldValue(this.analysisId(), data.index).subscribe({
+      this.editorService.readFieldValue(this.taskId(), data.index).subscribe({
         next: (result) => {
           if (result?.value != null) {
             this.syncLiveValueToPanel(data.index, result.value);
@@ -504,7 +504,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
     this.subs.push(
       this.fillField$.pipe(debounceTime(300)).subscribe(({ fieldIndex, value }) => {
         this._suppressValueSync = true;
-        this.editorService.fillField(this.analysisId(), fieldIndex, value).subscribe({
+        this.editorService.fillField(this.taskId(), fieldIndex, value).subscribe({
           complete: () => { setTimeout(() => this._suppressValueSync = false, 200); },
           error: () => { this._suppressValueSync = false; },
         });
@@ -513,7 +513,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy() {
-    const channelName = `private-analysis.${this.analysisId()}`;
+    const channelName = `private-analysis.${this.taskId()}`;
     try {
       this.ws['pusher']?.unsubscribe(channelName);
     } catch {}
@@ -611,7 +611,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
       this.userSelectedMode.set(true);
     }
     this.currentMode.set(mode);
-    this.editorService.setMode(this.analysisId(), mode).subscribe({
+    this.editorService.setMode(this.taskId(), mode).subscribe({
       error: (err) => this.handleSessionError(err)
     });
   }
@@ -624,7 +624,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
     }
     this.selectedFieldIndex.set(index);
     this.updateSelectedField();
-    this.editorService.focusField(this.analysisId(), index).subscribe();
+    this.editorService.focusField(this.taskId(), index).subscribe();
   }
 
   onFieldChanged(updatedField: EditorField) {
@@ -642,7 +642,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
       this.draftSave$.next();
 
       // Update highlights in VNC
-      this.editorService.updateFields(this.analysisId(), stepsClone[stepIdx].fields).subscribe({
+      this.editorService.updateFields(this.taskId(), stepsClone[stepIdx].fields).subscribe({
         error: (err) => this.handleSessionError(err)
       });
 
@@ -663,7 +663,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
     this.steps.set(stepsClone);
     this.updateCurrentFields();
     this.draftSave$.next();
-    this.editorService.updateFields(this.analysisId(), fields).subscribe({
+    this.editorService.updateFields(this.taskId(), fields).subscribe({
       error: (err) => this.handleSessionError(err)
     });
   }
@@ -672,7 +672,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
     if (this.navigatingStep()) {
       return;
     }
-    this.editorService.testSelector(this.analysisId(), selector).subscribe({
+    this.editorService.testSelector(this.taskId(), selector).subscribe({
       next: (result) => {
         if (this.fieldDetail) {
           this.fieldDetail.setTestResult(result);
@@ -719,7 +719,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
     this.selectedFieldIndex.set(stepsClone[stepIdx].fields.length - 1);
     this.updateSelectedField();
 
-    this.editorService.updateFields(this.analysisId(), stepsClone[stepIdx].fields).subscribe();
+    this.editorService.updateFields(this.taskId(), stepsClone[stepIdx].fields).subscribe();
   }
 
   private removeFieldByIndex(index: number) {
@@ -740,7 +740,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
       }
 
       this.draftSave$.next();
-      this.editorService.updateFields(this.analysisId(), stepsClone[stepIdx].fields).subscribe({
+      this.editorService.updateFields(this.taskId(), stepsClone[stepIdx].fields).subscribe({
         error: (err) => this.handleSessionError(err)
       });
     }
@@ -771,7 +771,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
       this.pendingNavigationRequestId = requestId;
       this.pendingNavigationPreviousIndex = previousIndex;
 
-      this.editorService.navigateStep(this.analysisId(), index, targetStep.page_url, requestId).subscribe({
+      this.editorService.navigateStep(this.taskId(), index, targetStep.page_url, requestId).subscribe({
         next: () => {
           this.applyStepFieldsAfterNavigation(requestId, onReady);
         },
@@ -825,7 +825,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
       return;
     }
     const step = this.steps()[this.activeStepIndex()];
-    this.editorService.updateFields(this.analysisId(), step?.fields || []).subscribe({
+    this.editorService.updateFields(this.taskId(), step?.fields || []).subscribe({
       next: () => {
         this.clearPendingNavigation();
         this.finishNavigationWait();
@@ -875,7 +875,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
     }
     this.setActiveStepState(index);
     const previousStep = this.steps()[index];
-    this.editorService.updateFields(this.analysisId(), previousStep?.fields || []).subscribe({
+    this.editorService.updateFields(this.taskId(), previousStep?.fields || []).subscribe({
       error: (err) => this.handleSessionError(err),
     });
   }
@@ -962,7 +962,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
     this.loginProgress.set('Filling login form...');
 
     // Call backend to execute login in the existing VNC session
-    this.editorService.executeLogin(this.analysisId(), loginFields, targetUrl, submitSelector, {
+    this.editorService.executeLogin(this.taskId(), loginFields, targetUrl, submitSelector, {
       human_breakpoint: step.human_breakpoint,
     }).subscribe({
       error: (err) => {
@@ -977,7 +977,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
     this.blurVncIfFocused();
     this.breakpointWaiting.set(false);
     this.loginProgress.set('Resuming after manual intervention...');
-    this.editorService.resumeLogin(this.analysisId()).subscribe({
+    this.editorService.resumeLogin(this.taskId()).subscribe({
       error: () => {
         this.loginProgress.set('Failed to resume. Try again.');
         this.breakpointWaiting.set(true);
@@ -1037,7 +1037,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
       }
 
       const activeStep = stepsClone[targetStepIndex];
-      this.editorService.updateFields(this.analysisId(), activeStep?.fields || []).subscribe({
+      this.editorService.updateFields(this.taskId(), activeStep?.fields || []).subscribe({
         error: (err) => this.handleSessionError(err),
       });
     }
@@ -1054,7 +1054,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
     this.confirming.set(true);
     const corrections = this.buildCorrections();
 
-    this.editorService.confirmAll(this.analysisId(), corrections).subscribe({
+    this.editorService.confirmAll(this.taskId(), corrections).subscribe({
       next: (result) => {
         this.confirming.set(false);
         // Build FormDefinition[] for wizard
@@ -1074,7 +1074,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
     }
 
     this.blurVncIfFocused();
-    this.editorService.cancelEditing(this.analysisId()).subscribe({
+    this.editorService.cancelEditing(this.taskId()).subscribe({
       next: () => this.cancelled.emit(),
       error: () => this.cancelled.emit(),
     });
@@ -1084,7 +1084,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
 
   private saveDraft() {
     const corrections = this.buildCorrections();
-    this.editorService.saveDraft(this.analysisId(), corrections).subscribe();
+    this.editorService.saveDraft(this.taskId(), corrections).subscribe();
   }
 
   // --- Validation ---

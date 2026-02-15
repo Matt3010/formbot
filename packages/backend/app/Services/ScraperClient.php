@@ -53,22 +53,22 @@ class ScraperClient
     }
 
     /**
-     * Cancel a running analysis on the scraper.
+     * Cancel a running task editing session on the scraper.
      */
-    public function cancelAnalysis(string $analysisId): array
+    public function cancelTask(string $taskId): array
     {
         $response = Http::timeout(30)
-            ->post("{$this->baseUrl}/analyze/{$analysisId}/cancel");
+            ->post("{$this->baseUrl}/analyze/{$taskId}/cancel");
 
         if (!$response->successful()) {
-            Log::warning('Scraper cancelAnalysis failed', [
-                'analysis_id' => $analysisId,
+            Log::warning('Scraper cancelTask failed', [
+                'task_id' => $taskId,
                 'status' => $response->status(),
                 'body' => $response->body(),
             ]);
 
             throw new \RuntimeException(
-                'Failed to cancel analysis: ' . ($response->json('detail') ?? $response->body())
+                'Failed to cancel task: ' . ($response->json('detail') ?? $response->body())
             );
         }
 
@@ -134,31 +134,31 @@ class ScraperClient
     }
 
     /**
-     * Start an interactive analysis session with VNC for field editing.
+     * Start an interactive task editing session with VNC for field editing.
      */
-    public function startInteractiveAnalysis(string $url, string $analysisId, ?array $analysisResult = null): array
+    public function startInteractiveTask(string $url, string $taskId, ?array $userCorrections = null): array
     {
         $payload = [
             'url' => $url,
-            'analysis_id' => $analysisId,
+            'task_id' => $taskId,
         ];
-        if ($analysisResult) {
-            $payload['analysis_result'] = $analysisResult;
+        if ($userCorrections) {
+            $payload['user_corrections'] = $userCorrections;
         }
 
         $response = Http::timeout($this->timeout)
             ->post("{$this->baseUrl}/analyze/interactive", $payload);
 
         if (!$response->successful()) {
-            Log::error('Scraper startInteractiveAnalysis failed', [
+            Log::error('Scraper startInteractiveTask failed', [
                 'url' => $url,
-                'analysis_id' => $analysisId,
+                'task_id' => $taskId,
                 'status' => $response->status(),
                 'body' => $response->body(),
             ]);
 
             throw new \RuntimeException(
-                'Failed to start interactive analysis: ' . ($response->json('detail') ?? $response->body())
+                'Failed to start interactive task: ' . ($response->json('detail') ?? $response->body())
             );
         }
 
@@ -168,7 +168,7 @@ class ScraperClient
     /**
      * Send an editing command to the scraper (mode, focus, test-selector, etc.).
      */
-    public function sendEditingCommand(string $analysisId, string $command, array $payload = []): array
+    public function sendEditingCommand(string $taskId, string $command, array $payload = []): array
     {
         $endpointMap = [
             'mode' => '/editing/mode',
@@ -186,7 +186,7 @@ class ScraperClient
 
         $response = Http::timeout(30)
             ->post("{$this->baseUrl}{$endpoint}", array_merge(
-                ['analysis_id' => $analysisId],
+                ['task_id' => $taskId],
                 $payload,
             ));
 
@@ -205,16 +205,16 @@ class ScraperClient
     /**
      * Stop an editing session on the scraper (cleanup browser + VNC).
      */
-    public function stopEditingSession(string $analysisId): array
+    public function stopEditingSession(string $taskId): array
     {
         $response = Http::timeout(30)
             ->post("{$this->baseUrl}/editing/cleanup", [
-                'analysis_id' => $analysisId,
+                'task_id' => $taskId,
             ]);
 
         if (!$response->successful()) {
             Log::warning('Scraper stopEditingSession failed', [
-                'analysis_id' => $analysisId,
+                'task_id' => $taskId,
                 'status' => $response->status(),
                 'body' => $response->body(),
             ]);
@@ -230,10 +230,10 @@ class ScraperClient
     /**
      * Execute login in an existing editing session (fill + submit + navigate to target).
      */
-    public function executeLoginInSession(string $analysisId, array $loginFields, string $targetUrl, string $submitSelector = '', bool $humanBreakpoint = false): array
+    public function executeLoginInSession(string $taskId, array $loginFields, string $targetUrl, string $submitSelector = '', bool $humanBreakpoint = false): array
     {
         $payload = [
-            'analysis_id' => $analysisId,
+            'task_id' => $taskId,
             'login_fields' => $loginFields,
             'target_url' => $targetUrl,
             'submit_selector' => $submitSelector,
@@ -259,11 +259,11 @@ class ScraperClient
     /**
      * Resume login execution after manual intervention in VNC.
      */
-    public function resumeLoginInSession(string $analysisId): array
+    public function resumeLoginInSession(string $taskId): array
     {
         $response = Http::timeout(30)
             ->post("{$this->baseUrl}/editing/resume-login", [
-                'analysis_id' => $analysisId,
+                'task_id' => $taskId,
             ]);
 
         if (!$response->successful()) {
@@ -281,10 +281,10 @@ class ScraperClient
     /**
      * Navigate to a different step URL during editing.
      */
-    public function navigateEditingStep(string $analysisId, string $url, ?int $step = null, ?string $requestId = null): array
+    public function navigateEditingStep(string $taskId, string $url, ?int $step = null, ?string $requestId = null): array
     {
         $payload = [
-            'analysis_id' => $analysisId,
+            'task_id' => $taskId,
             'url' => $url,
         ];
 

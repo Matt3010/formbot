@@ -26,7 +26,9 @@ class Task extends Model
      * The model's default values for attributes.
      */
     protected $attributes = [
-        'status' => 'draft',
+        'status' => 'editing',
+        'editing_status' => 'idle',
+        'editing_step' => 0,
         'requires_login' => false,
         'login_every_time' => true,
     ];
@@ -38,6 +40,13 @@ class Task extends Model
         'user_id',
         'name',
         'target_url',
+        'current_editing_url',
+        'vnc_session_id',
+        'editing_status',
+        'editing_step',
+        'user_corrections',
+        'editing_started_at',
+        'editing_expires_at',
         'schedule_type',
         'schedule_cron',
         'schedule_at',
@@ -66,6 +75,9 @@ class Task extends Model
             'requires_login' => 'boolean',
             'login_every_time' => 'boolean',
             'schedule_at' => 'datetime',
+            'user_corrections' => 'array',
+            'editing_started_at' => 'datetime',
+            'editing_expires_at' => 'datetime',
         ];
     }
 

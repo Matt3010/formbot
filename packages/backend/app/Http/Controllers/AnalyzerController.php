@@ -3,26 +3,27 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\AnalyzeUrlRequest;
-use App\Models\Analysis;
+use App\Models\Task;
 use Illuminate\Http\JsonResponse;
 
 class AnalyzerController extends Controller
 {
     /**
-     * Analyze a URL — always creates a manual analysis (no AI).
+     * Create a new task for VNC-based form editing.
      */
     public function analyze(AnalyzeUrlRequest $request): JsonResponse
     {
-        $analysis = Analysis::create([
+        $task = Task::create([
             'user_id' => auth()->id(),
-            'url' => $request->input('url'),
-            'type' => 'manual',
+            'name' => $request->input('name', 'New Task'),
+            'target_url' => $request->input('url'),
+            'current_editing_url' => $request->input('url'),
             'status' => 'editing',
-            'model' => null,
-            'result' => [
-                'url' => $request->input('url'),
-                'page_requires_login' => false,
-                'forms' => [[
+            'editing_status' => 'idle',
+            'editing_step' => 0,
+            'user_corrections' => [
+                'steps' => [[
+                    'step_order' => 0,
                     'form_type' => 'target',
                     'form_selector' => '',
                     'submit_selector' => '',
@@ -33,8 +34,8 @@ class AnalyzerController extends Controller
         ]);
 
         return response()->json([
-            'analysis_id' => $analysis->id,
-            'message' => 'Manual analysis created. Open the editor to configure fields.',
+            'task_id' => $task->id,
+            'message' => 'Task created. Open the VNC editor to configure fields.',
         ]);
     }
 }

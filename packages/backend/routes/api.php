@@ -5,8 +5,6 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\AnalyzerController;
-use App\Http\Controllers\AnalysisController;
-use App\Http\Controllers\EditingController;
 use App\Http\Controllers\ExecutionController;
 use App\Http\Controllers\SettingsController;
 
@@ -56,28 +54,19 @@ Route::middleware('auth:api')->group(function () {
     Route::get('/settings', [SettingsController::class, 'index']);
     Route::put('/settings', [SettingsController::class, 'update']);
 
-    // Analyses
-    Route::get('/analyses', [AnalysisController::class, 'index']);
-    Route::get('/analyses/{analysis}', [AnalysisController::class, 'show']);
-    Route::post('/analyses/{analysis}/cancel', [AnalysisController::class, 'cancel']);
-    Route::post('/analyses/{analysis}/link-task', [AnalysisController::class, 'linkTask']);
-
-    // Editing (VNC form editor)
-    Route::prefix('analyses/{analysis}/editing')->group(function () {
-        Route::post('/start', [EditingController::class, 'start']);
-        Route::post('/resume', [EditingController::class, 'resume']);
-        Route::patch('/draft', [EditingController::class, 'draft']);
-        Route::post('/command', [EditingController::class, 'command']);
-        Route::post('/confirm', [EditingController::class, 'confirm']);
-        Route::post('/cancel', [EditingController::class, 'cancel']);
-        Route::post('/step', [EditingController::class, 'step']);
-        Route::post('/execute-login', [EditingController::class, 'executeLogin']);
-        Route::post('/resume-login', [EditingController::class, 'resumeLogin']);
+    // Task Editing (VNC form editor)
+    Route::prefix('tasks/{task}/editing')->group(function () {
+        Route::post('/start', [TaskController::class, 'startEditing']);
+        Route::post('/resume', [TaskController::class, 'resumeEditing']);
+        Route::patch('/draft', [TaskController::class, 'saveDraft']);
+        Route::post('/command', [TaskController::class, 'sendCommand']);
+        Route::post('/confirm', [TaskController::class, 'confirmEditing']);
+        Route::post('/cancel', [TaskController::class, 'cancelEditing']);
+        Route::post('/step', [TaskController::class, 'navigateStep']);
+        Route::post('/execute-login', [TaskController::class, 'executeLogin']);
+        Route::post('/resume-login', [TaskController::class, 'resumeLogin']);
     });
 
     // Logs
     Route::get('/logs', [ExecutionController::class, 'logs']);
 });
-
-// Internal routes (scraper callback, protected by X-Internal-Key header)
-Route::post('/internal/analyses/{id}/result', [AnalysisController::class, 'storeResult']);

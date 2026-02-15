@@ -33,15 +33,15 @@ export interface UserCorrections {
 }
 
 export interface HighlightingReadyEvent {
-  analysis_id: string;
+  task_id: string;
   vnc_url: string;
   vnc_session_id: string;
   fields: any[];
-  analysis_result: any;
+  user_corrections: any;
 }
 
 export interface FieldSelectedEvent {
-  analysis_id: string;
+  task_id: string;
   index: number;
   selector: string;
   name: string;
@@ -51,7 +51,7 @@ export interface FieldSelectedEvent {
 }
 
 export interface FieldAddedEvent {
-  analysis_id: string;
+  task_id: string;
   selector: string;
   tagName: string;
   type: string;
@@ -64,13 +64,13 @@ export interface FieldAddedEvent {
 }
 
 export interface FieldRemovedEvent {
-  analysis_id: string;
+  task_id: string;
   index: number;
   selector: string;
 }
 
 export interface FieldValueChangedEvent {
-  analysis_id: string;
+  task_id: string;
   index: number;
   selector: string;
   value: string;
@@ -83,14 +83,14 @@ export interface TestSelectorResult {
 }
 
 export interface LoginExecutionProgressEvent {
-  analysis_id: string;
+  task_id: string;
   phase: string;       // 'filling' | 'submitting' | 'waiting_redirect' | 'navigating' | 'loading_target' | 'analyzing' | 'human_breakpoint'
   message: string;
   needs_vnc?: boolean;
 }
 
 export interface LoginExecutionCompleteEvent {
-  analysis_id: string;
+  task_id: string;
   success: boolean;
   error?: string;
   target_result?: any;
@@ -98,7 +98,7 @@ export interface LoginExecutionCompleteEvent {
 }
 
 export interface StepNavigationStateEvent {
-  analysis_id: string;
+  task_id: string;
   status: 'started' | 'completed' | 'failed';
   step?: number;
   url: string;

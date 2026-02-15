@@ -31,7 +31,7 @@ SAMPLE_FIELDS = [
 ]
 
 
-def _make_mock_session(analysis_id: str = ANALYSIS_ID) -> HighlighterSession:
+def _make_mock_session(task_id: str = ANALYSIS_ID) -> HighlighterSession:
     """Create a mock HighlighterSession."""
     page = AsyncMock()
     page.evaluate = AsyncMock(return_value={"found": True, "matchCount": 1})
@@ -52,7 +52,7 @@ def _make_mock_session(analysis_id: str = ANALYSIS_ID) -> HighlighterSession:
     pw = AsyncMock()
 
     session = HighlighterSession(
-        analysis_id=analysis_id,
+        task_id=task_id,
         highlighter=highlighter,
         browser=browser,
         context=context,
@@ -77,7 +77,7 @@ def _register_session(session=None):
     """Helper to register a mock session synchronously."""
     registry = HighlighterRegistry.get_instance()
     session = session or _make_mock_session()
-    registry._sessions[session.analysis_id] = session
+    registry._sessions[session.task_id] = session
     return session
 
 
@@ -86,7 +86,7 @@ def _register_session(session=None):
 def test_set_mode_success():
     session = _register_session()
     resp = client.post("/editing/mode", json={
-        "analysis_id": ANALYSIS_ID,
+        "task_id": ANALYSIS_ID,
         "mode": "select",
     })
     assert resp.status_code == 200
@@ -98,7 +98,7 @@ def test_set_mode_success():
 def test_set_mode_invalid_mode():
     _register_session()
     resp = client.post("/editing/mode", json={
-        "analysis_id": ANALYSIS_ID,
+        "task_id": ANALYSIS_ID,
         "mode": "invalid",
     })
     assert resp.status_code == 400
@@ -106,7 +106,7 @@ def test_set_mode_invalid_mode():
 
 def test_set_mode_session_not_found():
     resp = client.post("/editing/mode", json={
-        "analysis_id": "nonexistent",
+        "task_id": "nonexistent",
         "mode": "select",
     })
     assert resp.status_code == 404
@@ -116,7 +116,7 @@ def test_set_mode_blocked_while_navigating():
     session = _register_session()
     session.navigating = True
     resp = client.post("/editing/mode", json={
-        "analysis_id": ANALYSIS_ID,
+        "task_id": ANALYSIS_ID,
         "mode": "add",
     })
     assert resp.status_code == 409
@@ -128,7 +128,7 @@ def test_update_fields_success():
     session = _register_session()
     new_fields = [{"field_selector": "#email", "field_name": "email", "field_type": "email"}]
     resp = client.post("/editing/update-fields", json={
-        "analysis_id": ANALYSIS_ID,
+        "task_id": ANALYSIS_ID,
         "fields": new_fields,
     })
     assert resp.status_code == 200
@@ -138,7 +138,7 @@ def test_update_fields_success():
 
 def test_update_fields_session_not_found():
     resp = client.post("/editing/update-fields", json={
-        "analysis_id": "nonexistent",
+        "task_id": "nonexistent",
         "fields": [],
     })
     assert resp.status_code == 404
@@ -149,7 +149,7 @@ def test_update_fields_session_not_found():
 def test_focus_field_success():
     session = _register_session()
     resp = client.post("/editing/focus-field", json={
-        "analysis_id": ANALYSIS_ID,
+        "task_id": ANALYSIS_ID,
         "field_index": 0,
     })
     assert resp.status_code == 200
@@ -158,7 +158,7 @@ def test_focus_field_success():
 
 def test_focus_field_session_not_found():
     resp = client.post("/editing/focus-field", json={
-        "analysis_id": "nonexistent",
+        "task_id": "nonexistent",
         "field_index": 0,
     })
     assert resp.status_code == 404
@@ -169,7 +169,7 @@ def test_focus_field_session_not_found():
 def test_test_selector_found():
     session = _register_session()
     resp = client.post("/editing/test-selector", json={
-        "analysis_id": ANALYSIS_ID,
+        "task_id": ANALYSIS_ID,
         "selector": "#username",
     })
     assert resp.status_code == 200
@@ -182,7 +182,7 @@ def test_test_selector_not_found():
     session = _register_session()
     session.highlighter.test_selector = AsyncMock(return_value={"found": False, "matchCount": 0})
     resp = client.post("/editing/test-selector", json={
-        "analysis_id": ANALYSIS_ID,
+        "task_id": ANALYSIS_ID,
         "selector": ".nonexistent",
     })
     assert resp.status_code == 200
@@ -194,7 +194,7 @@ def test_test_selector_not_found():
 def test_fill_field_success():
     session = _register_session()
     resp = client.post("/editing/fill-field", json={
-        "analysis_id": ANALYSIS_ID,
+        "task_id": ANALYSIS_ID,
         "field_index": 0,
         "value": "testuser",
     })
@@ -205,7 +205,7 @@ def test_fill_field_success():
 
 def test_fill_field_session_not_found():
     resp = client.post("/editing/fill-field", json={
-        "analysis_id": "nonexistent",
+        "task_id": "nonexistent",
         "field_index": 0,
         "value": "test",
     })
@@ -218,7 +218,7 @@ def test_read_field_value_success():
     session = _register_session()
     session.highlighter.read_field_value = AsyncMock(return_value="current_value")
     resp = client.post("/editing/read-field-value", json={
-        "analysis_id": ANALYSIS_ID,
+        "task_id": ANALYSIS_ID,
         "field_index": 0,
     })
     assert resp.status_code == 200
@@ -230,7 +230,7 @@ def test_read_field_value_success():
 
 def test_read_field_value_session_not_found():
     resp = client.post("/editing/read-field-value", json={
-        "analysis_id": "nonexistent",
+        "task_id": "nonexistent",
         "field_index": 0,
     })
     assert resp.status_code == 404
@@ -240,14 +240,14 @@ def test_read_field_value_session_not_found():
 
 def test_confirm_success():
     session = _register_session()
-    resp = client.post("/editing/confirm", json={"analysis_id": ANALYSIS_ID})
+    resp = client.post("/editing/confirm", json={"task_id": ANALYSIS_ID})
     assert resp.status_code == 200
     assert resp.json()["status"] == "confirmed"
     assert session.confirmed_event.is_set()
 
 
 def test_confirm_session_not_found():
-    resp = client.post("/editing/confirm", json={"analysis_id": "nonexistent"})
+    resp = client.post("/editing/confirm", json={"task_id": "nonexistent"})
     assert resp.status_code == 404
 
 
@@ -255,7 +255,7 @@ def test_confirm_session_not_found():
 
 def test_cancel_success():
     session = _register_session()
-    resp = client.post("/editing/cancel", json={"analysis_id": ANALYSIS_ID})
+    resp = client.post("/editing/cancel", json={"task_id": ANALYSIS_ID})
     assert resp.status_code == 200
     assert resp.json()["status"] == "cancelled"
     assert session.cancelled_event.is_set()
@@ -265,7 +265,7 @@ def test_cancel_success():
 
 def test_cleanup_success():
     session = _register_session()
-    resp = client.post("/editing/cleanup", json={"analysis_id": ANALYSIS_ID})
+    resp = client.post("/editing/cleanup", json={"task_id": ANALYSIS_ID})
     assert resp.status_code == 200
     assert resp.json()["status"] == "cleaned_up"
 
@@ -275,7 +275,7 @@ def test_cleanup_success():
 
 
 def test_cleanup_not_found():
-    resp = client.post("/editing/cleanup", json={"analysis_id": "nonexistent"})
+    resp = client.post("/editing/cleanup", json={"task_id": "nonexistent"})
     assert resp.status_code == 200
     assert resp.json()["status"] == "not_found"
 
@@ -285,7 +285,7 @@ def test_cleanup_not_found():
 def test_navigate_success():
     session = _register_session()
     resp = client.post("/editing/navigate", json={
-        "analysis_id": ANALYSIS_ID,
+        "task_id": ANALYSIS_ID,
         "url": "https://example.com/target",
     })
     assert resp.status_code == 200
@@ -300,7 +300,7 @@ def test_navigate_broadcasts_started_and_completed_events():
         mock_get.return_value = mock_broadcaster
 
         resp = client.post("/editing/navigate", json={
-            "analysis_id": ANALYSIS_ID,
+            "task_id": ANALYSIS_ID,
             "url": "https://example.com/target",
             "step": 2,
             "request_id": "nav-req-001",
@@ -308,7 +308,7 @@ def test_navigate_broadcasts_started_and_completed_events():
 
     assert resp.status_code == 200
     calls = [
-        c for c in mock_broadcaster.trigger_analysis.call_args_list
+        c for c in mock_broadcaster.trigger_task_editing.call_args_list
         if c.args[1] == "StepNavigationState"
     ]
     statuses = [c.args[2]["status"] for c in calls]
@@ -320,7 +320,7 @@ def test_navigate_blocked_when_already_navigating():
     session = _register_session()
     session.navigating = True
     resp = client.post("/editing/navigate", json={
-        "analysis_id": ANALYSIS_ID,
+        "task_id": ANALYSIS_ID,
         "url": "https://example.com/target",
     })
     assert resp.status_code == 409
@@ -330,7 +330,7 @@ def test_navigate_blocked_when_executing():
     session = _register_session()
     session.executing = True
     resp = client.post("/editing/navigate", json={
-        "analysis_id": ANALYSIS_ID,
+        "task_id": ANALYSIS_ID,
         "url": "https://example.com/target",
     })
     assert resp.status_code == 409
@@ -346,7 +346,7 @@ def test_navigate_sets_busy_flag_and_clears_after_success():
     session.page.wait_for_timeout = AsyncMock()
 
     resp = client.post("/editing/navigate", json={
-        "analysis_id": ANALYSIS_ID,
+        "task_id": ANALYSIS_ID,
         "url": "https://example.com/target",
     })
     assert resp.status_code == 200
@@ -363,7 +363,7 @@ def test_navigate_clears_busy_flag_on_failure():
     session.page.goto = AsyncMock(side_effect=_goto)
 
     resp = client.post("/editing/navigate", json={
-        "analysis_id": ANALYSIS_ID,
+        "task_id": ANALYSIS_ID,
         "url": "https://example.com/target",
     })
     assert resp.status_code == 500
@@ -378,14 +378,14 @@ def test_navigate_broadcasts_failed_event():
         mock_get.return_value = mock_broadcaster
 
         resp = client.post("/editing/navigate", json={
-            "analysis_id": ANALYSIS_ID,
+            "task_id": ANALYSIS_ID,
             "url": "https://example.com/target",
             "request_id": "nav-req-fail",
         })
 
     assert resp.status_code == 500
     calls = [
-        c for c in mock_broadcaster.trigger_analysis.call_args_list
+        c for c in mock_broadcaster.trigger_task_editing.call_args_list
         if c.args[1] == "StepNavigationState"
     ]
     statuses = [c.args[2]["status"] for c in calls]
@@ -395,7 +395,7 @@ def test_navigate_broadcasts_failed_event():
 
 def test_navigate_session_not_found():
     resp = client.post("/editing/navigate", json={
-        "analysis_id": "nonexistent",
+        "task_id": "nonexistent",
         "url": "https://example.com",
     })
     assert resp.status_code == 404
@@ -476,7 +476,7 @@ async def test_registry_active_count():
 def test_execute_login_success():
     session = _register_session()
     resp = client.post("/editing/execute-login", json={
-        "analysis_id": ANALYSIS_ID,
+        "task_id": ANALYSIS_ID,
         "login_fields": [
             {"field_selector": "#username", "value": "user1"},
             {"field_selector": "#password", "value": "pass1", "field_type": "password", "is_sensitive": True},
@@ -490,7 +490,7 @@ def test_execute_login_success():
 
 def test_execute_login_session_not_found():
     resp = client.post("/editing/execute-login", json={
-        "analysis_id": "nonexistent",
+        "task_id": "nonexistent",
         "login_fields": [],
         "target_url": "https://example.com",
     })
@@ -501,7 +501,7 @@ def test_execute_login_already_executing():
     session = _register_session()
     session.executing = True
     resp = client.post("/editing/execute-login", json={
-        "analysis_id": ANALYSIS_ID,
+        "task_id": ANALYSIS_ID,
         "login_fields": [],
         "target_url": "https://example.com",
     })
@@ -512,7 +512,7 @@ def test_execute_login_blocked_while_navigating():
     session = _register_session()
     session.navigating = True
     resp = client.post("/editing/execute-login", json={
-        "analysis_id": ANALYSIS_ID,
+        "task_id": ANALYSIS_ID,
         "login_fields": [],
         "target_url": "https://example.com",
     })
@@ -523,14 +523,14 @@ def test_execute_login_blocked_while_navigating():
 
 def test_resume_login_success():
     session = _register_session()
-    resp = client.post("/editing/resume-login", json={"analysis_id": ANALYSIS_ID})
+    resp = client.post("/editing/resume-login", json={"task_id": ANALYSIS_ID})
     assert resp.status_code == 200
     assert resp.json()["status"] == "resumed"
     assert session.resume_event.is_set()
 
 
 def test_resume_login_session_not_found():
-    resp = client.post("/editing/resume-login", json={"analysis_id": "nonexistent"})
+    resp = client.post("/editing/resume-login", json={"task_id": "nonexistent"})
     assert resp.status_code == 404
 
 
@@ -562,7 +562,7 @@ def test_execute_login_creates_empty_result():
     target page (no AI analysis)."""
     session = _register_session()
     resp = client.post("/editing/execute-login", json={
-        "analysis_id": ANALYSIS_ID,
+        "task_id": ANALYSIS_ID,
         "login_fields": [],
         "target_url": "https://example.com/dashboard",
     })

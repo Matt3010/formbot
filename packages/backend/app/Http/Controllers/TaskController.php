@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Events\TaskStatusChanged;
+use App\Exceptions\ScraperRequestException;
 use App\Http\Requests\StoreTaskRequest;
 use App\Http\Requests\UpdateTaskRequest;
 use App\Http\Resources\TaskResource;
@@ -11,9 +12,11 @@ use App\Models\Task;
 use App\Models\FormDefinition;
 use App\Models\FormField;
 use App\Services\CryptoService;
+use App\Services\ScraperClient;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
 class TaskController extends Controller
@@ -287,6 +290,338 @@ class TaskController extends Controller
         $task->load('formDefinitions.formFields');
 
         return (new TaskResource($task))->response()->setStatusCode(201);
+    }
+
+    /**
+     * Start a VNC editing session for a task.
+     */
+    public function startEditing(Task $task, Request $request, ScraperClient $scraperClient): JsonResponse
+    {
+        $this->authorizeTask($task);
+
+        if ($task->status !== 'editing' && $task->status !== 'draft') {
+            return response()->json(['message' => 'Task must be in editing or draft status.'], 422);
+        }
+
+        // If a previous session exists, clean it up before starting a new one
+        if ($task->editing_status === 'active') {
+            try {
+                $scraperClient->stopEditingSession($task->id);
+            } catch (\Exception $e) {
+                Log::warning('Failed to stop previous editing session', [
+                    'task_id' => $task->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        // Allow URL override (e.g., login URL instead of target URL)
+        $url = $request->input('url', $task->current_editing_url ?? $task->target_url);
+
+        try {
+            $result = $scraperClient->startInteractiveTask(
+                url: $url,
+                taskId: $task->id,
+                userCorrections: $task->user_corrections,
+            );
+
+            $task->update([
+                'status' => 'editing',
+                'editing_status' => 'active',
+                'current_editing_url' => $url,
+                'editing_started_at' => now(),
+                'editing_expires_at' => now()->addMinutes(30),
+            ]);
+
+            return response()->json([
+                'status' => 'started',
+                'task_id' => $task->id,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to start editing session', [
+                'task_id' => $task->id,
+                'error' => $e->getMessage(),
+            ]);
+            return response()->json(['message' => 'Failed to start editing session: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Resume an editing session from a saved draft.
+     */
+    public function resumeEditing(Task $task, ScraperClient $scraperClient): JsonResponse
+    {
+        $this->authorizeTask($task);
+
+        if (!$task->user_corrections) {
+            return response()->json(['message' => 'No draft to resume.'], 422);
+        }
+
+        try {
+            $result = $scraperClient->startInteractiveTask(
+                url: $task->current_editing_url ?? $task->target_url,
+                taskId: $task->id,
+                userCorrections: $task->user_corrections,
+            );
+
+            $task->update([
+                'status' => 'editing',
+                'editing_status' => 'active',
+                'editing_started_at' => now(),
+                'editing_expires_at' => now()->addMinutes(30),
+            ]);
+
+            return response()->json([
+                'status' => 'resumed',
+                'task_id' => $task->id,
+                'user_corrections' => $task->user_corrections,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to resume editing session', [
+                'task_id' => $task->id,
+                'error' => $e->getMessage(),
+            ]);
+            return response()->json(['message' => 'Failed to resume editing session.'], 500);
+        }
+    }
+
+    /**
+     * Save user corrections as a draft (debounced from frontend).
+     */
+    public function saveDraft(Task $task, Request $request): JsonResponse
+    {
+        $this->authorizeTask($task);
+
+        $request->validate([
+            'user_corrections' => ['required', 'array'],
+        ]);
+
+        $task->update([
+            'user_corrections' => $request->input('user_corrections'),
+        ]);
+
+        return response()->json(['status' => 'draft_saved']);
+    }
+
+    /**
+     * Proxy a command to the scraper (highlight.update, field.focus, selector.test, etc.).
+     */
+    public function sendCommand(Task $task, Request $request, ScraperClient $scraperClient): JsonResponse
+    {
+        $this->authorizeTask($task);
+
+        $request->validate([
+            'command' => ['required', 'string'],
+            'payload' => ['sometimes', 'array'],
+        ]);
+
+        try {
+            $result = $scraperClient->sendEditingCommand(
+                taskId: $task->id,
+                command: $request->input('command'),
+                payload: $request->input('payload', []),
+            );
+
+            return response()->json($result);
+        } catch (ScraperRequestException $e) {
+            return response()->json(['message' => $e->getMessage()], $e->statusCode());
+        } catch (\Exception $e) {
+            return response()->json(['message' => 'Command failed: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Confirm all fields — create FormDefinition + FormField, transition to draft.
+     */
+    public function confirmEditing(Task $task, Request $request, ScraperClient $scraperClient): JsonResponse
+    {
+        $this->authorizeTask($task);
+
+        $corrections = $request->input('user_corrections') ?: $task->user_corrections;
+        if (!$corrections || empty($corrections['steps'])) {
+            return response()->json(['message' => 'No form data to confirm.'], 422);
+        }
+
+        $crypto = app(CryptoService::class);
+
+        // Delete existing form definitions (cascade deletes fields)
+        $task->formDefinitions()->delete();
+
+        // Recreate from user_corrections
+        foreach ($corrections['steps'] as $step) {
+            $fd = FormDefinition::create([
+                'task_id' => $task->id,
+                'step_order' => $step['step_order'] ?? 0,
+                'depends_on_step_order' => isset($step['depends_on_step_order']) && $step['depends_on_step_order'] !== ''
+                    ? (int) $step['depends_on_step_order']
+                    : null,
+                'page_url' => $step['page_url'] ?? $task->target_url,
+                'form_type' => $step['form_type'] ?? 'target',
+                'form_selector' => $step['form_selector'] ?? '',
+                'submit_selector' => $step['submit_selector'] ?? '',
+                'human_breakpoint' => $step['human_breakpoint'] ?? false,
+            ]);
+
+            foreach ($step['fields'] ?? [] as $field) {
+                $presetValue = $field['preset_value'] ?? null;
+                if (!empty($field['is_sensitive']) && !empty($presetValue)) {
+                    $presetValue = $crypto->encrypt($presetValue);
+                }
+
+                FormField::create([
+                    'form_definition_id' => $fd->id,
+                    'field_name' => $field['field_name'] ?? '',
+                    'field_type' => $field['field_type'] ?? 'text',
+                    'field_selector' => $field['field_selector'] ?? '',
+                    'field_purpose' => $field['field_purpose'] ?? null,
+                    'preset_value' => $presetValue,
+                    'is_sensitive' => $field['is_sensitive'] ?? false,
+                    'is_file_upload' => $field['is_file_upload'] ?? false,
+                    'is_required' => $field['is_required'] ?? false,
+                    'options' => $field['options'] ?? null,
+                    'sort_order' => $field['sort_order'] ?? 0,
+                ]);
+            }
+        }
+
+        // Update task: transition from editing → draft
+        $task->update([
+            'status' => 'draft',
+            'editing_status' => 'confirmed',
+            'user_corrections' => $corrections,
+            'requires_login' => collect($corrections['steps'])->contains('form_type', 'login'),
+            'login_url' => collect($corrections['steps'])
+                ->firstWhere('form_type', 'login')['page_url'] ?? null,
+        ]);
+
+        // Cleanup VNC session
+        try {
+            $scraperClient->stopEditingSession($task->id);
+        } catch (\Exception $e) {
+            Log::warning('Failed to stop editing session on scraper', [
+                'task_id' => $task->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        $task->load('formDefinitions.formFields');
+        event(new TaskStatusChanged($task));
+
+        return response()->json([
+            'status' => 'confirmed',
+            'task_id' => $task->id,
+            'task' => new TaskResource($task),
+        ]);
+    }
+
+    /**
+     * Execute login in the existing VNC session, then navigate to target and analyze.
+     */
+    public function executeLogin(Task $task, Request $request, ScraperClient $scraperClient): JsonResponse
+    {
+        $this->authorizeTask($task);
+
+        $request->validate([
+            'login_fields' => ['required', 'array'],
+            'target_url' => ['required', 'string'],
+            'submit_selector' => ['sometimes', 'string'],
+            'human_breakpoint' => ['sometimes', 'boolean'],
+        ]);
+
+        try {
+            $result = $scraperClient->executeLoginInSession(
+                taskId: $task->id,
+                loginFields: $request->input('login_fields'),
+                targetUrl: $request->input('target_url'),
+                submitSelector: $request->input('submit_selector', ''),
+                humanBreakpoint: $request->boolean('human_breakpoint', false),
+            );
+
+            return response()->json($result);
+        } catch (ScraperRequestException $e) {
+            return response()->json(['message' => $e->getMessage()], $e->statusCode());
+        } catch (\Exception $e) {
+            Log::error('Failed to execute login in session', [
+                'task_id' => $task->id,
+                'error' => $e->getMessage(),
+            ]);
+            return response()->json(['message' => 'Login execution failed: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Resume login execution after manual intervention.
+     */
+    public function resumeLogin(Task $task, ScraperClient $scraperClient): JsonResponse
+    {
+        $this->authorizeTask($task);
+
+        try {
+            $result = $scraperClient->resumeLoginInSession($task->id);
+            return response()->json($result);
+        } catch (ScraperRequestException $e) {
+            return response()->json(['message' => $e->getMessage()], $e->statusCode());
+        } catch (\Exception $e) {
+            return response()->json(['message' => 'Resume failed: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Cancel editing — close VNC, revert to previous status.
+     */
+    public function cancelEditing(Task $task, ScraperClient $scraperClient): JsonResponse
+    {
+        $this->authorizeTask($task);
+
+        $task->update([
+            'editing_status' => 'cancelled',
+            'status' => 'draft', // revert to draft
+        ]);
+
+        try {
+            $scraperClient->stopEditingSession($task->id);
+        } catch (\Exception $e) {
+            Log::warning('Failed to stop editing session on cancel', [
+                'task_id' => $task->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return response()->json(['status' => 'cancelled']);
+    }
+
+    /**
+     * Navigate to a different step in multi-step editing.
+     */
+    public function navigateStep(Task $task, Request $request, ScraperClient $scraperClient): JsonResponse
+    {
+        $this->authorizeTask($task);
+
+        $request->validate([
+            'step' => ['required', 'integer', 'min:0'],
+            'url' => ['required', 'url'],
+            'request_id' => ['sometimes', 'string', 'max:120'],
+        ]);
+
+        try {
+            $result = $scraperClient->navigateEditingStep(
+                taskId: $task->id,
+                url: $request->input('url'),
+                step: $request->integer('step'),
+                requestId: $request->input('request_id'),
+            );
+
+            $task->update([
+                'editing_step' => $request->input('step'),
+                'current_editing_url' => $request->input('url'),
+            ]);
+
+            return response()->json($result);
+        } catch (ScraperRequestException $e) {
+            return response()->json(['message' => $e->getMessage()], $e->statusCode());
+        } catch (\Exception $e) {
+            return response()->json(['message' => 'Navigation failed: ' . $e->getMessage()], 500);
+        }
     }
 
     /**

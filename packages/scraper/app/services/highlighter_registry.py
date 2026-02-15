@@ -16,7 +16,7 @@ from app.services.field_highlighter import FieldHighlighter
 
 @dataclass
 class HighlighterSession:
-    analysis_id: str
+    task_id: str
     highlighter: FieldHighlighter
     browser: Browser
     context: BrowserContext
@@ -50,18 +50,18 @@ class HighlighterRegistry:
 
     async def register(self, session: HighlighterSession) -> None:
         async with self._lock:
-            self._sessions[session.analysis_id] = session
+            self._sessions[session.task_id] = session
 
-    def get(self, analysis_id: str) -> Optional[HighlighterSession]:
-        return self._sessions.get(analysis_id)
+    def get(self, task_id: str) -> Optional[HighlighterSession]:
+        return self._sessions.get(task_id)
 
-    async def remove(self, analysis_id: str) -> Optional[HighlighterSession]:
+    async def remove(self, task_id: str) -> Optional[HighlighterSession]:
         async with self._lock:
-            return self._sessions.pop(analysis_id, None)
+            return self._sessions.pop(task_id, None)
 
-    async def cleanup_session(self, analysis_id: str) -> None:
+    async def cleanup_session(self, task_id: str) -> None:
         """Cleanup overlay, close browser, remove from registry."""
-        session = await self.remove(analysis_id)
+        session = await self.remove(task_id)
         if not session:
             return
 

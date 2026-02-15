@@ -114,3 +114,8 @@ l' highlight del campo è traslato rispetto l' elemento.
 </Error>
 
 Cosa vuol dire filesystem legacy nelle stats su sezione screenshot? Se non serve toglierlo.
+
+Rendere opensource il progetto, in modo da permettere alla community di contribuire allo sviluppo e miglioramento del tool, 
+oltre a favorire la trasparenza e la collaborazione tra sviluppatori e utenti interessati al settore della sicurezza informatica.
+Scrivere un readme dettagliato che spieghi le funzionalità del tool, come installarlo e utilizzarlo, e come contribuire al progetto, in modo da facilitare l'adozione e la partecipazione della community.
+Includere la licenza open source appropriata per il progetto, in modo da garantire che il codice sia utilizzabile e modificabile da chiunque, nel rispetto dei diritti degli autori originali.

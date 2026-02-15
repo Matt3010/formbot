@@ -13,52 +13,52 @@ router = APIRouter(prefix="/editing")
 
 
 class SetModeRequest(BaseModel):
-    analysis_id: str
+    task_id: str
     mode: str  # select | add | remove
 
 
 class UpdateFieldsRequest(BaseModel):
-    analysis_id: str
+    task_id: str
     fields: list[dict]
 
 
 class FocusFieldRequest(BaseModel):
-    analysis_id: str
+    task_id: str
     field_index: int
 
 
 class TestSelectorRequest(BaseModel):
-    analysis_id: str
+    task_id: str
     selector: str
 
 
 class FillFieldRequest(BaseModel):
-    analysis_id: str
+    task_id: str
     field_index: int
     value: str
 
 
 class ReadFieldValueRequest(BaseModel):
-    analysis_id: str
+    task_id: str
     field_index: int
 
 
 class SessionRequest(BaseModel):
-    analysis_id: str
+    task_id: str
 
 
 class NavigateRequest(BaseModel):
-    analysis_id: str
+    task_id: str
     url: str
     step: Optional[int] = None
     request_id: Optional[str] = None
 
 
-def _get_session(analysis_id: str):
+def _get_session(task_id: str):
     registry = HighlighterRegistry.get_instance()
-    session = registry.get(analysis_id)
+    session = registry.get(task_id)
     if not session:
-        raise HTTPException(status_code=404, detail=f"No active editing session for analysis {analysis_id}")
+        raise HTTPException(status_code=404, detail=f"No active editing session for analysis {task_id}")
     return session
 
 
@@ -76,7 +76,7 @@ async def set_mode(request: SetModeRequest):
     if request.mode not in ("select", "add", "remove"):
         raise HTTPException(status_code=400, detail="Invalid mode. Must be: select, add, remove")
 
-    session = _get_session(request.analysis_id)
+    session = _get_session(request.task_id)
     _assert_session_command_ready(session)
     await session.highlighter.set_mode(request.mode)
     return {"status": "ok", "mode": request.mode}
@@ -85,7 +85,7 @@ async def set_mode(request: SetModeRequest):
 @router.post("/update-fields")
 async def update_fields(request: UpdateFieldsRequest):
     """Update the highlighted fields after panel edits."""
-    session = _get_session(request.analysis_id)
+    session = _get_session(request.task_id)
     _assert_session_command_ready(session)
     session.fields = request.fields
     await session.highlighter.update_fields(request.fields)
@@ -95,7 +95,7 @@ async def update_fields(request: UpdateFieldsRequest):
 @router.post("/focus-field")
 async def focus_field(request: FocusFieldRequest):
     """Scroll to and flash-highlight a specific field."""
-    session = _get_session(request.analysis_id)
+    session = _get_session(request.task_id)
     _assert_session_command_ready(session)
     await session.highlighter.focus_field(request.field_index)
     return {"status": "ok", "field_index": request.field_index}
@@ -104,7 +104,7 @@ async def focus_field(request: FocusFieldRequest):
 @router.post("/test-selector")
 async def test_selector(request: TestSelectorRequest):
     """Test a CSS selector — flash green if found, red if not."""
-    session = _get_session(request.analysis_id)
+    session = _get_session(request.task_id)
     _assert_session_command_ready(session)
     result = await session.highlighter.test_selector(request.selector)
     return {"status": "ok", **result}
@@ -113,7 +113,7 @@ async def test_selector(request: TestSelectorRequest):
 @router.post("/fill-field")
 async def fill_field(request: FillFieldRequest):
     """Programmatically fill a field's value in the live page."""
-    session = _get_session(request.analysis_id)
+    session = _get_session(request.task_id)
     _assert_session_command_ready(session)
     await session.highlighter.fill_field(request.field_index, request.value)
     return {"status": "ok"}
@@ -122,7 +122,7 @@ async def fill_field(request: FillFieldRequest):
 @router.post("/read-field-value")
 async def read_field_value(request: ReadFieldValueRequest):
     """Read the current value of a field from the live page."""
-    session = _get_session(request.analysis_id)
+    session = _get_session(request.task_id)
     # Allow reading even during login execution - it's a read-only operation
     value = await session.highlighter.read_field_value(request.field_index)
     return {"status": "ok", "value": value}
@@ -131,35 +131,35 @@ async def read_field_value(request: ReadFieldValueRequest):
 @router.post("/confirm")
 async def confirm_editing(request: SessionRequest):
     """User confirmed all fields. Signal the session."""
-    session = _get_session(request.analysis_id)
+    session = _get_session(request.task_id)
     session.confirmed_event.set()
-    return {"status": "confirmed", "analysis_id": request.analysis_id}
+    return {"status": "confirmed", "task_id": request.task_id}
 
 
 @router.post("/cancel")
 async def cancel_editing(request: SessionRequest):
     """User cancelled editing. Signal the session."""
-    session = _get_session(request.analysis_id)
+    session = _get_session(request.task_id)
     session.cancelled_event.set()
-    return {"status": "cancelled", "analysis_id": request.analysis_id}
+    return {"status": "cancelled", "task_id": request.task_id}
 
 
 @router.post("/cleanup")
 async def cleanup_editing(request: SessionRequest):
     """Force cleanup an editing session (close browser, remove overlays)."""
     registry = HighlighterRegistry.get_instance()
-    session = registry.get(request.analysis_id)
+    session = registry.get(request.task_id)
     if not session:
         return {"status": "not_found"}
 
-    await registry.cleanup_session(request.analysis_id)
-    return {"status": "cleaned_up", "analysis_id": request.analysis_id}
+    await registry.cleanup_session(request.task_id)
+    return {"status": "cleaned_up", "task_id": request.task_id}
 
 
 @router.post("/navigate")
 async def navigate_step(request: NavigateRequest):
     """Navigate the browser to a different URL (for multi-step flows)."""
-    session = _get_session(request.analysis_id)
+    session = _get_session(request.task_id)
     broadcaster = Broadcaster.get_instance()
     if session.executing:
         raise HTTPException(status_code=409, detail="Login execution already in progress")
@@ -167,7 +167,7 @@ async def navigate_step(request: NavigateRequest):
         raise HTTPException(status_code=409, detail="Step navigation already in progress")
 
     session.navigating = True
-    broadcaster.trigger_analysis(request.analysis_id, "StepNavigationState", {
+    broadcaster.trigger_task_editing(request.task_id, "StepNavigationState", {
         "status": "started",
         "step": request.step,
         "url": request.url,
@@ -189,7 +189,7 @@ async def navigate_step(request: NavigateRequest):
         final_url = getattr(session.page, "url", None)
         if not isinstance(final_url, str) or not final_url:
             final_url = request.url
-        broadcaster.trigger_analysis(request.analysis_id, "StepNavigationState", {
+        broadcaster.trigger_task_editing(request.task_id, "StepNavigationState", {
             "status": "completed",
             "step": request.step,
             "url": request.url,
@@ -199,7 +199,7 @@ async def navigate_step(request: NavigateRequest):
         })
         return {"status": "ok", "url": request.url, "final_url": final_url}
     except Exception as e:
-        broadcaster.trigger_analysis(request.analysis_id, "StepNavigationState", {
+        broadcaster.trigger_task_editing(request.task_id, "StepNavigationState", {
             "status": "failed",
             "step": request.step,
             "url": request.url,
@@ -220,7 +220,7 @@ class LoginFieldPayload(BaseModel):
 
 
 class ExecuteLoginRequest(BaseModel):
-    analysis_id: str
+    task_id: str
     login_fields: list[LoginFieldPayload]
     target_url: str
     submit_selector: Optional[str] = ""
@@ -230,7 +230,7 @@ class ExecuteLoginRequest(BaseModel):
 @router.post("/execute-login")
 async def execute_login(request: ExecuteLoginRequest):
     """Execute login in the existing VNC session, then navigate to target and analyze."""
-    session = _get_session(request.analysis_id)
+    session = _get_session(request.task_id)
 
     if session.executing:
         raise HTTPException(status_code=409, detail="Login execution already in progress")
@@ -242,11 +242,11 @@ async def execute_login(request: ExecuteLoginRequest):
     async def _run():
         broadcaster = Broadcaster.get_instance()
         page = session.page
-        analysis_id = request.analysis_id
+        task_id = request.task_id
 
         # Helper function to DRY up manual intervention pauses
         async def _pause_for_human(phase_name: str, message_text: str):
-            broadcaster.trigger_analysis(analysis_id, "LoginExecutionProgress", {
+            broadcaster.trigger_task_editing(task_id, "LoginExecutionProgress", {
                 "phase": phase_name,
                 "message": message_text,
                 "needs_vnc": True,
@@ -260,7 +260,7 @@ async def execute_login(request: ExecuteLoginRequest):
 
         try:
             # Phase: filling
-            broadcaster.trigger_analysis(analysis_id, "LoginExecutionProgress", {
+            broadcaster.trigger_task_editing(task_id, "LoginExecutionProgress", {
                 "phase": "filling",
                 "message": "Filling login form fields...",
             })
@@ -290,7 +290,7 @@ async def execute_login(request: ExecuteLoginRequest):
                     pass  # Silently skip fields that fail to fill
 
             # Phase: submitting
-            broadcaster.trigger_analysis(analysis_id, "LoginExecutionProgress", {
+            broadcaster.trigger_task_editing(task_id, "LoginExecutionProgress", {
                 "phase": "submitting",
                 "message": "Submitting login form...",
             })
@@ -314,7 +314,7 @@ async def execute_login(request: ExecuteLoginRequest):
                 await page.keyboard.press("Enter")
 
             # Allow time for cookies and redirects
-            broadcaster.trigger_analysis(analysis_id, "LoginExecutionProgress", {
+            broadcaster.trigger_task_editing(task_id, "LoginExecutionProgress", {
                 "phase": "waiting_redirect",
                 "message": "Waiting for page redirect...",
             })
@@ -329,7 +329,7 @@ async def execute_login(request: ExecuteLoginRequest):
                 await _pause_for_human("human_breakpoint", "Human breakpoint — complete any manual steps in the VNC viewer, then click Resume.")
 
             # Phase: navigating to target
-            broadcaster.trigger_analysis(analysis_id, "LoginExecutionProgress", {
+            broadcaster.trigger_task_editing(task_id, "LoginExecutionProgress", {
                 "phase": "navigating",
                 "message": "Navigating to target page...",
             })
@@ -343,7 +343,7 @@ async def execute_login(request: ExecuteLoginRequest):
                 pass
             await page.wait_for_timeout(800)
 
-            broadcaster.trigger_analysis(analysis_id, "LoginExecutionProgress", {
+            broadcaster.trigger_task_editing(task_id, "LoginExecutionProgress", {
                 "phase": "loading_target",
                 "message": "Target page loaded, preparing editor...",
             })
@@ -367,14 +367,14 @@ async def execute_login(request: ExecuteLoginRequest):
             await session.highlighter.inject()
             session.fields = target_fields
 
-            broadcaster.trigger_analysis(analysis_id, "LoginExecutionComplete", {
+            broadcaster.trigger_task_editing(task_id, "LoginExecutionComplete", {
                 "success": True,
                 "target_result": target_result,
                 "target_fields": target_fields,
             })
 
         except Exception as e:
-            broadcaster.trigger_analysis(analysis_id, "LoginExecutionComplete", {
+            broadcaster.trigger_task_editing(task_id, "LoginExecutionComplete", {
                 "success": False,
                 "error": str(e),
             })
@@ -382,12 +382,12 @@ async def execute_login(request: ExecuteLoginRequest):
             session.executing = False
 
     asyncio.create_task(_run())
-    return {"status": "started", "analysis_id": request.analysis_id}
+    return {"status": "started", "task_id": request.task_id}
 
 
 @router.post("/resume-login")
 async def resume_login(request: SessionRequest):
     """Signal that manual intervention is complete."""
-    session = _get_session(request.analysis_id)
+    session = _get_session(request.task_id)
     session.resume_event.set()
-    return {"status": "resumed", "analysis_id": request.analysis_id}
+    return {"status": "resumed", "task_id": request.task_id}

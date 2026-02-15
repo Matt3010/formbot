@@ -3,10 +3,17 @@ export interface Task {
   user_id: number;
   name: string;
   target_url: string;
+  current_editing_url: string | null;
+  vnc_session_id: string | null;
+  editing_status: 'idle' | 'active' | 'confirmed' | 'cancelled';
+  editing_step: number;
+  user_corrections: any | null;
+  editing_started_at: string | null;
+  editing_expires_at: string | null;
   schedule_type: 'once' | 'cron';
   schedule_cron: string | null;
   schedule_at: string | null;
-  status: 'draft' | 'active' | 'paused' | 'completed' | 'failed' | 'running' | 'deleted';
+  status: 'editing' | 'draft' | 'active' | 'paused' | 'completed' | 'failed' | 'running' | 'deleted';
   is_dry_run: boolean;
   max_retries: number;
   max_parallel: number;

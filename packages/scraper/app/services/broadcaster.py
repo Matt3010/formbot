@@ -36,7 +36,7 @@ class Broadcaster:
         self.trigger(f"private-tasks.{user_id}", event, data)
         self.trigger(f"private-execution.{execution_id}", event, data)
 
-    def trigger_analysis(self, analysis_id: str, event: str, data: dict):
-        """Broadcast an AI analysis event (private channel)."""
-        data["analysis_id"] = str(analysis_id)
-        self.trigger(f"private-analysis.{analysis_id}", event, data)
+    def trigger_task_editing(self, task_id: str, event: str, data: dict):
+        """Broadcast a task editing event (private channel)."""
+        data["task_id"] = str(task_id)
+        self.trigger(f"private-task.{task_id}", event, data)

@@ -37,7 +37,7 @@ def mock_page():
 
 @pytest.fixture
 def highlighter(mock_page):
-    return FieldHighlighter(mock_page, analysis_id="test-analysis-123")
+    return FieldHighlighter(mock_page, task_id="test-analysis-123")
 
 
 @pytest.mark.asyncio
@@ -183,7 +183,7 @@ async def test_test_selector_returns_default_on_none(highlighter, mock_page):
 @pytest.mark.asyncio
 async def test_on_field_selected_broadcasts(highlighter):
     """_on_field_selected should broadcast FieldSelected event."""
-    with patch.object(highlighter.broadcaster, "trigger_analysis") as mock_trigger:
+    with patch.object(highlighter.broadcaster, "trigger_task_editing") as mock_trigger:
         data = {"index": 0, "selector": "#username", "name": "username", "type": "text"}
         await highlighter._on_field_selected(json.dumps(data))
 
@@ -193,7 +193,7 @@ async def test_on_field_selected_broadcasts(highlighter):
 @pytest.mark.asyncio
 async def test_on_field_added_broadcasts(highlighter):
     """_on_field_added should broadcast FieldAdded event."""
-    with patch.object(highlighter.broadcaster, "trigger_analysis") as mock_trigger:
+    with patch.object(highlighter.broadcaster, "trigger_task_editing") as mock_trigger:
         data = {"selector": "#email", "tagName": "input", "type": "email", "name": "email"}
         await highlighter._on_field_added(json.dumps(data))
 
@@ -203,7 +203,7 @@ async def test_on_field_added_broadcasts(highlighter):
 @pytest.mark.asyncio
 async def test_on_field_removed_broadcasts(highlighter):
     """_on_field_removed should broadcast FieldRemoved event."""
-    with patch.object(highlighter.broadcaster, "trigger_analysis") as mock_trigger:
+    with patch.object(highlighter.broadcaster, "trigger_task_editing") as mock_trigger:
         data = {"index": 1, "selector": "#password"}
         await highlighter._on_field_removed(json.dumps(data))
 
@@ -213,7 +213,7 @@ async def test_on_field_removed_broadcasts(highlighter):
 @pytest.mark.asyncio
 async def test_on_field_value_changed_broadcasts(highlighter):
     """_on_field_value_changed should broadcast FieldValueChanged event."""
-    with patch.object(highlighter.broadcaster, "trigger_analysis") as mock_trigger:
+    with patch.object(highlighter.broadcaster, "trigger_task_editing") as mock_trigger:
         data = {"index": 0, "selector": "#username", "value": "testuser"}
         await highlighter._on_field_value_changed(json.dumps(data))
 

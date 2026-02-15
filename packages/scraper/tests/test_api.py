@@ -196,24 +196,24 @@ async def test_vnc_stop_endpoint():
 
 
 @pytest.mark.asyncio
-async def test_vnc_resume_analysis_endpoint():
-    """POST /vnc/resume-analysis signals a VNC session to resume during analysis."""
+async def test_vnc_resume_task_editing_endpoint():
+    """POST /vnc/resume-task-editing signals a VNC session to resume during task editing."""
     mock_vnc = AsyncMock()
     mock_vnc.resume_session = AsyncMock(return_value={
         "status": "resumed",
-        "execution_id": "analysis-123",
+        "execution_id": "task-123",
     })
 
     with patch("app.api.vnc.vnc_manager", mock_vnc):
         app = _get_app()
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as ac:
-            response = await ac.post("/vnc/resume-analysis", json={
+            response = await ac.post("/vnc/resume-task-editing", json={
                 "session_id": "vnc-session-abc",
-                "analysis_id": "analysis-123",
+                "task_id": "task-123",
             })
 
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "resumed"
-    mock_vnc.resume_session.assert_awaited_once_with("vnc-session-abc", "analysis-123")
+    mock_vnc.resume_session.assert_awaited_once_with("vnc-session-abc", "task-123")

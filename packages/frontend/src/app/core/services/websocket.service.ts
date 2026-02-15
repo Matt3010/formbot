@@ -192,43 +192,15 @@ export class WebSocketService {
   }
 
   /**
-   * Subscribe to analysis results for a specific analysis ID.
-   * Uses a private channel (auth required).
-   * Auto-unsubscribes after receiving the result.
+   * Subscribe to task editing events (highlighting, field selection, login progress).
    */
-  waitForAnalysis(analysisId: string): Observable<any> {
+  subscribeToTaskEditing(taskId: string): Observable<any> {
     return new Observable(subscriber => {
       if (!this.pusher) {
         this.connect();
       }
 
-      const channelName = `private-analysis.${analysisId}`;
-      const channel = this.pusher.subscribe(channelName);
-      this.subscribedChannels.set(channelName, channel);
-
-      channel.bind('AnalysisCompleted', (data: any) => this.zone.run(() => {
-        subscriber.next(data);
-        subscriber.complete();
-        this.unsubscribeChannel(channelName);
-      }));
-
-      // Cleanup on unsubscribe
-      return () => {
-        this.unsubscribeChannel(channelName);
-      };
-    });
-  }
-
-  /**
-   * Subscribe to analysis events (highlighting, field selection, login progress).
-   */
-  subscribeToAnalysis(analysisId: string): Observable<any> {
-    return new Observable(subscriber => {
-      if (!this.pusher) {
-        this.connect();
-      }
-
-      const channelName = `private-analysis.${analysisId}`;
+      const channelName = `private-task.${taskId}`;
       let channel = this.subscribedChannels.get(channelName);
       if (!channel) {
         channel = this.pusher.subscribe(channelName);

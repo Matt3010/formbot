@@ -131,7 +131,7 @@ export class StepUrlComponent {
   requiresLogin = signal(false);
   analyzingLogin = signal(false);
   analyzing = signal(false);
-  currentAnalysisId = signal<string | null>(null);
+  currentTaskId = signal<string | null>(null);
 
   initialLoginConfig = input<LoginConfig | undefined>(undefined);
 
@@ -155,7 +155,7 @@ export class StepUrlComponent {
 
     // If there's already an analysis in progress, we should ideally cancel it first
     // to avoid having multiple VNC sessions for the same task
-    const previousAnalysisId = this.currentAnalysisId();
+    const previousAnalysisId = this.currentTaskId();
 
     const setter = isLogin ? this.analyzingLogin : this.analyzing;
     setter.set(true);
@@ -163,8 +163,8 @@ export class StepUrlComponent {
     this.taskService.analyzeUrl(url).subscribe({
       next: (response) => {
         setter.set(false);
-        const analysisId = response.analysis_id;
-        this.currentAnalysisId.set(analysisId);
+        const analysisId = response.task_id;
+        this.currentTaskId.set(analysisId);
 
         if (isLogin) {
           this.emitLoginConfig();

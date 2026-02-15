@@ -10,7 +10,7 @@ from playwright.async_api import async_playwright
 
 from app.services.stealth import apply_stealth
 from app.services.broadcaster import Broadcaster
-from app.services.analysis_registry import AnalysisRegistry
+from app.services.task_editing_registry import TaskEditingRegistry
 from app.services.field_highlighter import FieldHighlighter
 from app.services.highlighter_registry import HighlighterRegistry, HighlighterSession
 from app.api.vnc import get_vnc_manager
@@ -21,15 +21,15 @@ router = APIRouter()
 
 class InteractiveAnalyzeRequest(BaseModel):
     url: str
-    analysis_id: str
-    analysis_result: Optional[dict] = None
+    task_id: str
+    user_corrections: Optional[dict] = None
 
 
 @router.post("/analyze/interactive")
 async def analyze_url_interactive(request: InteractiveAnalyzeRequest):
-    """Start interactive analysis with VNC — keeps browser open for field editing."""
+    """Start interactive task editing with VNC — keeps browser open for field editing."""
     vnc_manager = get_vnc_manager()
-    registry = AnalysisRegistry.get_instance()
+    registry = TaskEditingRegistry.get_instance()
 
     async def _run():
         broadcaster = Broadcaster.get_instance()
@@ -39,7 +39,7 @@ async def analyze_url_interactive(request: InteractiveAnalyzeRequest):
 
         try:
             # Reserve display for headed browser
-            reserved = await vnc_manager.reserve_display(request.analysis_id)
+            reserved = await vnc_manager.reserve_display(request.task_id)
             vnc_session_id = reserved["session_id"]
             vnc_display = reserved["display"]
 
@@ -65,29 +65,29 @@ async def analyze_url_interactive(request: InteractiveAnalyzeRequest):
                 pass
             await page.wait_for_timeout(1000)
 
-            # Use existing result or create empty one
-            if request.analysis_result:
-                result = request.analysis_result
+            # Use existing user corrections or create empty structure
+            if request.user_corrections:
+                user_data = request.user_corrections
             else:
-                result = {
-                    "forms": [{
+                user_data = {
+                    "steps": [{
+                        "step_order": 0,
                         "form_type": "target",
                         "form_selector": "",
                         "submit_selector": "",
                         "fields": [],
                         "page_url": request.url,
                     }],
-                    "page_requires_login": False,
                 }
 
-            # Build fields list from result
+            # Build fields list from steps
             fields = []
-            for form in result.get("forms", []):
-                for field in form.get("fields", []):
+            for step in user_data.get("steps", []):
+                for field in step.get("fields", []):
                     fields.append(field)
 
             # Create FieldHighlighter and inject
-            highlighter = FieldHighlighter(page, request.analysis_id)
+            highlighter = FieldHighlighter(page, request.task_id)
             await highlighter.setup(fields)
             await highlighter.inject()
 
@@ -96,7 +96,7 @@ async def analyze_url_interactive(request: InteractiveAnalyzeRequest):
 
             # Register session in HighlighterRegistry
             session = HighlighterSession(
-                analysis_id=request.analysis_id,
+                task_id=request.task_id,
                 highlighter=highlighter,
                 browser=browser,
                 context=context,
@@ -109,24 +109,22 @@ async def analyze_url_interactive(request: InteractiveAnalyzeRequest):
             await h_registry.register(session)
 
             # Broadcast HighlightingReady
-            broadcaster.trigger_analysis(request.analysis_id, "HighlightingReady", {
+            broadcaster.trigger_task_editing(request.task_id, "HighlightingReady", {
                 "vnc_url": vnc_result.get("vnc_url"),
                 "vnc_session_id": vnc_session_id,
                 "fields": fields,
-                "analysis_result": result,
+                "user_corrections": user_data,
             })
 
-            return result
+            return user_data
 
         except asyncio.CancelledError:
-            broadcaster.trigger_analysis(request.analysis_id, "AnalysisCompleted", {
-                "result": {},
+            broadcaster.trigger_task_editing(request.task_id, "TaskEditingError", {
                 "error": "Cancelled by user",
             })
-            await _notify_backend_result(request.analysis_id, {}, "Cancelled by user")
         except Exception as e:
             import traceback
-            print(f"[INTERACTIVE_ANALYSIS] EXCEPTION: {e}\n{traceback.format_exc()}", flush=True)
+            print(f"[INTERACTIVE_EDITING] EXCEPTION: {e}\n{traceback.format_exc()}", flush=True)
 
             # On error, clean up browser
             if browser:
@@ -145,39 +143,22 @@ async def analyze_url_interactive(request: InteractiveAnalyzeRequest):
                 except Exception:
                     pass
 
-            broadcaster.trigger_analysis(request.analysis_id, "AnalysisCompleted", {
-                "result": {},
+            broadcaster.trigger_task_editing(request.task_id, "TaskEditingError", {
                 "error": str(e),
             })
-            await _notify_backend_result(request.analysis_id, {}, str(e))
         finally:
-            registry.unregister(request.analysis_id)
+            registry.unregister(request.task_id)
 
     task = asyncio.create_task(_run())
-    registry.register(request.analysis_id, task)
-    return {"status": "started", "analysis_id": request.analysis_id}
+    registry.register(request.task_id, task)
+    return {"status": "started", "task_id": request.task_id}
 
 
-@router.post("/analyze/{analysis_id}/cancel")
-async def cancel_analysis(analysis_id: str):
-    """Cancel a running analysis."""
-    registry = AnalysisRegistry.get_instance()
-    cancelled = registry.cancel(analysis_id)
+@router.post("/analyze/{task_id}/cancel")
+async def cancel_task(task_id: str):
+    """Cancel a running task editing session."""
+    registry = TaskEditingRegistry.get_instance()
+    cancelled = registry.cancel(task_id)
     if cancelled:
         return {"status": "cancelled"}
     return {"status": "not_found"}
-
-
-async def _notify_backend_result(analysis_id: str, result: dict, error: Optional[str]):
-    """Call backend internal endpoint to store the analysis result."""
-    try:
-        url = f"{settings.backend_url}/api/internal/analyses/{analysis_id}/result"
-        async with httpx.AsyncClient(timeout=30) as client:
-            await client.post(url, json={
-                "result": result,
-                "error": error,
-            }, headers={
-                "X-Internal-Key": settings.internal_api_key,
-            })
-    except Exception as e:
-        print(f"[INTERACTIVE_ANALYSIS] Failed to notify backend: {e}", flush=True)

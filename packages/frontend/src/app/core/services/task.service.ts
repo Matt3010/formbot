@@ -52,16 +52,8 @@ export class TaskService {
     return this.api.post(`/tasks/${id}/export`);
   }
 
-  analyzeUrl(url: string): Observable<any> {
-    return this.api.post('/analyze', { url });
-  }
-
-  analyzeInteractive(analysisId: string): Observable<any> {
-    return this.api.post(`/analyses/${analysisId}/editing/start`);
-  }
-
-  analyzeInteractiveWithUrl(analysisId: string, url: string): Observable<any> {
-    return this.api.post(`/analyses/${analysisId}/editing/start`, { url });
+  createForEditing(url: string, name?: string): Observable<any> {
+    return this.api.post('/analyze', { url, name: name || 'New Task' });
   }
 
   getExecutions(taskId: string, params?: Record<string, string>): Observable<{ data: ExecutionLog[] }> {
