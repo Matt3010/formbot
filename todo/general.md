@@ -55,8 +55,7 @@ Tra l'altro gli stati non sono allineati.
 Vedo usato "paused" ma l'interfaccia non lo permette.
 status: 'pending' | 'analyzing' | 'completed' | 'failed' | 'cancelled' | 'timed_out' | 'editing';
 
-!!!!!!!!
-tests/test_executor.py::test_execute_simple_single_form FAILED           [ 61%]
+~~tests/test_executor.py::test_execute_simple_single_form FAILED           [ 61%]
 tests/test_executor.py::test_execute_multi_step FAILED                   [ 62%]
 tests/test_executor.py::test_execute_multi_step_uses_dependency_graph_order FAILED [ 63%]
 tests/test_executor.py::test_execute_captcha_triggers_vnc_pause FAILED   [ 65%]
@@ -76,4 +75,4 @@ tests/test_executor.py::test_execute_dry_run_multi_step FAILED           [ 78%]
 tests/test_executor.py::test_no_duplicate_step_in_steps_log_after_captcha FAILED [ 79%]
 tests/test_executor.py::test_vnc_cleanup_on_execution_exception FAILED   [ 80%]
 tests/test_executor.py::test_vnc_cleanup_on_timeout_failure FAILED
-forse è dovuto dall'implementazione di MINIO e gli screenshots?
+forse è dovuto dall'implementazione di MINIO e gli screenshots?~~

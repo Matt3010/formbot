@@ -61,7 +61,7 @@ def _setup_db_for_task(mock_db, task, form_defs, fields_by_form_def_id):
 
 
 def _build_executor_patches(page, browser):
-    """Return patches for async_playwright and apply_stealth."""
+    """Return patches for async_playwright, apply_stealth, and ScreenshotStorage."""
     context = _make_mock_context(page)
     browser_mock = browser
     browser_mock.new_context = AsyncMock(return_value=context)
@@ -75,7 +75,13 @@ def _build_executor_patches(page, browser):
         "app.services.task_executor.apply_stealth",
         AsyncMock(),
     )
-    return pw_patch, stealth_patch, context
+    screenshot_storage_mock = MagicMock()
+    screenshot_storage_mock.upload_screenshot = MagicMock(return_value=("test-key", 12345))
+    screenshot_storage_patch = patch(
+        "app.services.task_executor.ScreenshotStorage.get_instance",
+        return_value=screenshot_storage_mock,
+    )
+    return pw_patch, stealth_patch, screenshot_storage_patch, context
 
 
 def _make_two_phase_vnc_mock(session_id="vnc-test-session"):
@@ -142,9 +148,9 @@ async def test_execute_simple_single_form(mock_db, mock_vnc_manager):
 
     page = _make_mock_page()
     browser = _make_mock_browser(_make_mock_context(page))
-    pw_patch, stealth_patch, context = _build_executor_patches(page, browser)
+    pw_patch, stealth_patch, screenshot_patch, context = _build_executor_patches(page, browser)
 
-    with pw_patch, stealth_patch:
+    with pw_patch, stealth_patch, screenshot_patch:
         from app.services.task_executor import TaskExecutor
 
         executor = TaskExecutor(db=mock_db, vnc_manager=mock_vnc_manager)
@@ -218,9 +224,9 @@ async def test_execute_multi_step(mock_db, mock_vnc_manager):
 
     page = _make_mock_page()
     browser = _make_mock_browser(_make_mock_context(page))
-    pw_patch, stealth_patch, context = _build_executor_patches(page, browser)
+    pw_patch, stealth_patch, screenshot_patch, context = _build_executor_patches(page, browser)
 
-    with pw_patch, stealth_patch:
+    with pw_patch, stealth_patch, screenshot_patch:
         from app.services.task_executor import TaskExecutor
 
         executor = TaskExecutor(db=mock_db, vnc_manager=mock_vnc_manager)
@@ -284,9 +290,9 @@ async def test_execute_multi_step_uses_dependency_graph_order(mock_db, mock_vnc_
 
     page = _make_mock_page()
     browser = _make_mock_browser(_make_mock_context(page))
-    pw_patch, stealth_patch, context = _build_executor_patches(page, browser)
+    pw_patch, stealth_patch, screenshot_patch, context = _build_executor_patches(page, browser)
 
-    with pw_patch, stealth_patch:
+    with pw_patch, stealth_patch, screenshot_patch:
         from app.services.task_executor import TaskExecutor
 
         executor = TaskExecutor(db=mock_db, vnc_manager=mock_vnc_manager)
@@ -325,9 +331,9 @@ async def test_execute_dry_run(mock_db, mock_vnc_manager):
 
     page = _make_mock_page()
     browser = _make_mock_browser(_make_mock_context(page))
-    pw_patch, stealth_patch, context = _build_executor_patches(page, browser)
+    pw_patch, stealth_patch, screenshot_patch, context = _build_executor_patches(page, browser)
 
-    with pw_patch, stealth_patch:
+    with pw_patch, stealth_patch, screenshot_patch:
         from app.services.task_executor import TaskExecutor
 
         executor = TaskExecutor(db=mock_db, vnc_manager=mock_vnc_manager)
@@ -374,7 +380,7 @@ async def test_execute_captcha_triggers_vnc_pause(mock_db):
 
     page = _make_mock_page()
     browser = _make_mock_browser(_make_mock_context(page))
-    pw_patch, stealth_patch, context = _build_executor_patches(page, browser)
+    pw_patch, stealth_patch, screenshot_patch, context = _build_executor_patches(page, browser)
 
     vnc_mock = _make_two_phase_vnc_mock()
 
@@ -383,7 +389,7 @@ async def test_execute_captcha_triggers_vnc_pause(mock_db):
         return_value=MagicMock(),
     )
 
-    with pw_patch, stealth_patch, broadcaster_patch:
+    with pw_patch, stealth_patch, screenshot_patch, broadcaster_patch:
         from app.services.task_executor import TaskExecutor
 
         executor = TaskExecutor(db=mock_db, vnc_manager=vnc_mock)
@@ -427,7 +433,7 @@ async def test_execute_2fa_triggers_post_submit_vnc(mock_db):
 
     page = _make_mock_page()
     browser = _make_mock_browser(_make_mock_context(page))
-    pw_patch, stealth_patch, context = _build_executor_patches(page, browser)
+    pw_patch, stealth_patch, screenshot_patch, context = _build_executor_patches(page, browser)
 
     vnc_mock = _make_two_phase_vnc_mock()
 
@@ -436,7 +442,7 @@ async def test_execute_2fa_triggers_post_submit_vnc(mock_db):
         return_value=MagicMock(),
     )
 
-    with pw_patch, stealth_patch, broadcaster_patch:
+    with pw_patch, stealth_patch, screenshot_patch, broadcaster_patch:
         from app.services.task_executor import TaskExecutor
 
         executor = TaskExecutor(db=mock_db, vnc_manager=vnc_mock)
@@ -471,7 +477,7 @@ async def test_execute_vnc_timeout_fails(mock_db):
 
     page = _make_mock_page()
     browser = _make_mock_browser(_make_mock_context(page))
-    pw_patch, stealth_patch, context = _build_executor_patches(page, browser)
+    pw_patch, stealth_patch, screenshot_patch, context = _build_executor_patches(page, browser)
 
     # VNC times out
     vnc_mock = _make_two_phase_vnc_mock()
@@ -482,7 +488,7 @@ async def test_execute_vnc_timeout_fails(mock_db):
         return_value=MagicMock(),
     )
 
-    with pw_patch, stealth_patch, broadcaster_patch:
+    with pw_patch, stealth_patch, screenshot_patch, broadcaster_patch:
         from app.services.task_executor import TaskExecutor
 
         executor = TaskExecutor(db=mock_db, vnc_manager=vnc_mock)
@@ -500,12 +506,16 @@ async def test_execute_task_not_found(mock_db, mock_vnc_manager):
     """execute raises ValueError when the task does not exist."""
     mock_db.query.return_value.filter.return_value.first.return_value = None
 
-    from app.services.task_executor import TaskExecutor
+    screenshot_storage_mock = MagicMock()
+    screenshot_storage_mock.upload_screenshot = MagicMock(return_value=("test-key", 12345))
 
-    executor = TaskExecutor(db=mock_db, vnc_manager=mock_vnc_manager)
+    with patch("app.services.task_executor.ScreenshotStorage.get_instance", return_value=screenshot_storage_mock):
+        from app.services.task_executor import TaskExecutor
 
-    with pytest.raises(ValueError, match="not found"):
-        await executor.execute("nonexistent-task-id")
+        executor = TaskExecutor(db=mock_db, vnc_manager=mock_vnc_manager)
+
+        with pytest.raises(ValueError, match="not found"):
+            await executor.execute("nonexistent-task-id")
 
 
 @pytest.mark.asyncio
@@ -527,9 +537,9 @@ async def test_execute_form_selector_not_found(mock_db, mock_vnc_manager):
     page = _make_mock_page()
     page.wait_for_selector = AsyncMock(side_effect=Exception("Timeout 10000ms exceeded"))
     browser = _make_mock_browser(_make_mock_context(page))
-    pw_patch, stealth_patch, context = _build_executor_patches(page, browser)
+    pw_patch, stealth_patch, screenshot_patch, context = _build_executor_patches(page, browser)
 
-    with pw_patch, stealth_patch:
+    with pw_patch, stealth_patch, screenshot_patch:
         from app.services.task_executor import TaskExecutor
 
         executor = TaskExecutor(db=mock_db, vnc_manager=mock_vnc_manager)
@@ -570,8 +580,14 @@ async def test_execute_stealth_mode(mock_db, mock_vnc_manager):
         "app.services.task_executor.apply_stealth",
         stealth_mock,
     )
+    screenshot_storage_mock = MagicMock()
+    screenshot_storage_mock.upload_screenshot = MagicMock(return_value=("test-key", 12345))
+    screenshot_patch = patch(
+        "app.services.task_executor.ScreenshotStorage.get_instance",
+        return_value=screenshot_storage_mock,
+    )
 
-    with pw_patch, stealth_patch:
+    with pw_patch, stealth_patch, screenshot_patch:
         from app.services.task_executor import TaskExecutor
 
         executor = TaskExecutor(db=mock_db, vnc_manager=mock_vnc_manager)
@@ -611,8 +627,14 @@ async def test_execute_stealth_disabled(mock_db, mock_vnc_manager):
         "app.services.task_executor.apply_stealth",
         stealth_mock,
     )
+    screenshot_storage_mock = MagicMock()
+    screenshot_storage_mock.upload_screenshot = MagicMock(return_value=("test-key", 12345))
+    screenshot_patch = patch(
+        "app.services.task_executor.ScreenshotStorage.get_instance",
+        return_value=screenshot_storage_mock,
+    )
 
-    with pw_patch, stealth_patch:
+    with pw_patch, stealth_patch, screenshot_patch:
         from app.services.task_executor import TaskExecutor
 
         executor = TaskExecutor(db=mock_db, vnc_manager=mock_vnc_manager)
@@ -643,9 +665,9 @@ async def test_execute_field_filling_select(mock_db, mock_vnc_manager):
 
     page = _make_mock_page()
     browser = _make_mock_browser(_make_mock_context(page))
-    pw_patch, stealth_patch, context = _build_executor_patches(page, browser)
+    pw_patch, stealth_patch, screenshot_patch, context = _build_executor_patches(page, browser)
 
-    with pw_patch, stealth_patch:
+    with pw_patch, stealth_patch, screenshot_patch:
         from app.services.task_executor import TaskExecutor
 
         executor = TaskExecutor(db=mock_db, vnc_manager=mock_vnc_manager)
@@ -684,9 +706,9 @@ async def test_execute_field_filling_checkbox(mock_db, mock_vnc_manager):
 
     page = _make_mock_page()
     browser = _make_mock_browser(_make_mock_context(page))
-    pw_patch, stealth_patch, context = _build_executor_patches(page, browser)
+    pw_patch, stealth_patch, screenshot_patch, context = _build_executor_patches(page, browser)
 
-    with pw_patch, stealth_patch:
+    with pw_patch, stealth_patch, screenshot_patch:
         from app.services.task_executor import TaskExecutor
 
         executor = TaskExecutor(db=mock_db, vnc_manager=mock_vnc_manager)
@@ -719,9 +741,9 @@ async def test_execute_field_filling_file_upload(mock_db, mock_vnc_manager):
 
     page = _make_mock_page()
     browser = _make_mock_browser(_make_mock_context(page))
-    pw_patch, stealth_patch, context = _build_executor_patches(page, browser)
+    pw_patch, stealth_patch, screenshot_patch, context = _build_executor_patches(page, browser)
 
-    with pw_patch, stealth_patch:
+    with pw_patch, stealth_patch, screenshot_patch:
         from app.services.task_executor import TaskExecutor
 
         executor = TaskExecutor(db=mock_db, vnc_manager=mock_vnc_manager)
@@ -756,9 +778,9 @@ async def test_execute_field_filling_hidden(mock_db, mock_vnc_manager):
 
     page = _make_mock_page()
     browser = _make_mock_browser(_make_mock_context(page))
-    pw_patch, stealth_patch, context = _build_executor_patches(page, browser)
+    pw_patch, stealth_patch, screenshot_patch, context = _build_executor_patches(page, browser)
 
-    with pw_patch, stealth_patch:
+    with pw_patch, stealth_patch, screenshot_patch:
         from app.services.task_executor import TaskExecutor
 
         executor = TaskExecutor(db=mock_db, vnc_manager=mock_vnc_manager)
@@ -793,9 +815,9 @@ async def test_execute_skips_field_with_no_preset(mock_db, mock_vnc_manager):
 
     page = _make_mock_page()
     browser = _make_mock_browser(_make_mock_context(page))
-    pw_patch, stealth_patch, context = _build_executor_patches(page, browser)
+    pw_patch, stealth_patch, screenshot_patch, context = _build_executor_patches(page, browser)
 
-    with pw_patch, stealth_patch:
+    with pw_patch, stealth_patch, screenshot_patch:
         from app.services.task_executor import TaskExecutor
 
         executor = TaskExecutor(db=mock_db, vnc_manager=mock_vnc_manager)
@@ -837,9 +859,9 @@ async def test_execute_field_error_continues(mock_db, mock_vnc_manager):
     # First fill call fails, second succeeds
     page.fill = AsyncMock(side_effect=[Exception("Element not found"), None])
     browser = _make_mock_browser(_make_mock_context(page))
-    pw_patch, stealth_patch, context = _build_executor_patches(page, browser)
+    pw_patch, stealth_patch, screenshot_patch, context = _build_executor_patches(page, browser)
 
-    with pw_patch, stealth_patch:
+    with pw_patch, stealth_patch, screenshot_patch:
         from app.services.task_executor import TaskExecutor
 
         executor = TaskExecutor(db=mock_db, vnc_manager=mock_vnc_manager)
@@ -879,9 +901,9 @@ async def test_execute_dry_run_multi_step(mock_db, mock_vnc_manager):
 
     page = _make_mock_page()
     browser = _make_mock_browser(_make_mock_context(page))
-    pw_patch, stealth_patch, context = _build_executor_patches(page, browser)
+    pw_patch, stealth_patch, screenshot_patch, context = _build_executor_patches(page, browser)
 
-    with pw_patch, stealth_patch:
+    with pw_patch, stealth_patch, screenshot_patch:
         from app.services.task_executor import TaskExecutor
 
         executor = TaskExecutor(db=mock_db, vnc_manager=mock_vnc_manager)
@@ -929,7 +951,7 @@ async def test_no_duplicate_step_in_steps_log_after_captcha(mock_db):
 
     page = _make_mock_page()
     browser = _make_mock_browser(_make_mock_context(page))
-    pw_patch, stealth_patch, _ = _build_executor_patches(page, browser)
+    pw_patch, stealth_patch, screenshot_patch, _ = _build_executor_patches(page, browser)
 
     vnc_mock = _make_two_phase_vnc_mock()
 
@@ -942,7 +964,7 @@ async def test_no_duplicate_step_in_steps_log_after_captcha(mock_db):
     added_objects = []
     mock_db.add = MagicMock(side_effect=lambda obj: added_objects.append(obj))
 
-    with pw_patch, stealth_patch, broadcaster_patch:
+    with pw_patch, stealth_patch, screenshot_patch, broadcaster_patch:
         from app.services.task_executor import TaskExecutor
 
         executor = TaskExecutor(db=mock_db, vnc_manager=vnc_mock)
@@ -988,7 +1010,7 @@ async def test_vnc_cleanup_on_execution_exception(mock_db):
     page = _make_mock_page()
     page.goto = AsyncMock(side_effect=Exception("DNS resolution failed"))
     browser = _make_mock_browser(_make_mock_context(page))
-    pw_patch, stealth_patch, _ = _build_executor_patches(page, browser)
+    pw_patch, stealth_patch, screenshot_patch, _ = _build_executor_patches(page, browser)
 
     vnc_mock = _make_two_phase_vnc_mock()
 
@@ -997,7 +1019,7 @@ async def test_vnc_cleanup_on_execution_exception(mock_db):
         return_value=MagicMock(),
     )
 
-    with pw_patch, stealth_patch, broadcaster_patch:
+    with pw_patch, stealth_patch, screenshot_patch, broadcaster_patch:
         from app.services.task_executor import TaskExecutor
 
         executor = TaskExecutor(db=mock_db, vnc_manager=vnc_mock)
@@ -1035,7 +1057,7 @@ async def test_vnc_cleanup_on_timeout_failure(mock_db):
 
     page = _make_mock_page()
     browser = _make_mock_browser(_make_mock_context(page))
-    pw_patch, stealth_patch, _ = _build_executor_patches(page, browser)
+    pw_patch, stealth_patch, screenshot_patch, _ = _build_executor_patches(page, browser)
 
     # VNC times out
     vnc_mock = _make_two_phase_vnc_mock()
@@ -1046,7 +1068,7 @@ async def test_vnc_cleanup_on_timeout_failure(mock_db):
         return_value=MagicMock(),
     )
 
-    with pw_patch, stealth_patch, broadcaster_patch:
+    with pw_patch, stealth_patch, screenshot_patch, broadcaster_patch:
         from app.services.task_executor import TaskExecutor
 
         executor = TaskExecutor(db=mock_db, vnc_manager=vnc_mock)
