@@ -65,7 +65,8 @@ class AnalysisController extends Controller
         }
 
         $analysis->update([
-            'status' => 'cancelled',
+            'status' => 'failed',
+            'error' => 'Cancelled by user',
             'completed_at' => now(),
         ]);
 
@@ -105,9 +106,9 @@ class AnalysisController extends Controller
             return response()->json(['message' => 'Analysis not found.'], 404);
         }
 
-        // Don't update if already cancelled
-        if ($analysis->status === 'cancelled') {
-            return response()->json(['message' => 'Analysis already cancelled.']);
+        // Don't update if already failed/cancelled
+        if ($analysis->status === 'failed') {
+            return response()->json(['message' => 'Analysis already failed or cancelled.']);
         }
 
         $error = $request->input('error');

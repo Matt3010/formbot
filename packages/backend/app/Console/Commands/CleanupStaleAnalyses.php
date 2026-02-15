@@ -10,7 +10,7 @@ class CleanupStaleAnalyses extends Command
 {
     protected $signature = 'formbot:cleanup-stale-analyses';
 
-    protected $description = 'Mark stale analyses (pending/analyzing for over 1 hour) as timed_out';
+    protected $description = 'Mark stale analyses (pending/analyzing for over 1 hour) as failed';
 
     public function handle(): int
     {
@@ -19,12 +19,13 @@ class CleanupStaleAnalyses extends Command
         $count = Analysis::whereIn('status', ['pending', 'analyzing'])
             ->where('created_at', '<', $cutoff)
             ->update([
-                'status' => 'timed_out',
+                'status' => 'failed',
+                'error' => 'Analysis timed out after 1 hour',
                 'completed_at' => now(),
             ]);
 
         if ($count > 0) {
-            $this->info("Marked {$count} stale analysis/analyses as timed_out.");
+            $this->info("Marked {$count} stale analysis/analyses as failed (timed out).");
             Log::info('CleanupStaleAnalyses completed', ['count' => $count]);
         } else {
             $this->info('No stale analyses found.');

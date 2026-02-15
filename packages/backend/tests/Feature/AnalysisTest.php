@@ -208,7 +208,7 @@ class AnalysisTest extends TestCase
         $mockScraperClient = Mockery::mock(ScraperClient::class);
         $mockScraperClient->shouldReceive('cancelAnalysis')
             ->once()
-            ->andReturn(['status' => 'cancelled']);
+            ->andReturn(['status' => 'failed']);
         $this->app->instance(ScraperClient::class, $mockScraperClient);
 
         $analysis = $this->createAnalysis(['status' => 'pending']);
@@ -219,7 +219,8 @@ class AnalysisTest extends TestCase
             ->assertJsonPath('message', 'Analysis cancelled.');
 
         $analysis->refresh();
-        $this->assertEquals('cancelled', $analysis->status);
+        $this->assertEquals('failed', $analysis->status);
+        $this->assertEquals('Cancelled by user', $analysis->error);
         $this->assertNotNull($analysis->completed_at);
     }
 
@@ -228,7 +229,7 @@ class AnalysisTest extends TestCase
         $mockScraperClient = Mockery::mock(ScraperClient::class);
         $mockScraperClient->shouldReceive('cancelAnalysis')
             ->once()
-            ->andReturn(['status' => 'cancelled']);
+            ->andReturn(['status' => 'failed']);
         $this->app->instance(ScraperClient::class, $mockScraperClient);
 
         $analysis = $this->createAnalysis(['status' => 'analyzing']);
@@ -239,7 +240,8 @@ class AnalysisTest extends TestCase
             ->assertJsonPath('message', 'Analysis cancelled.');
 
         $analysis->refresh();
-        $this->assertEquals('cancelled', $analysis->status);
+        $this->assertEquals('failed', $analysis->status);
+        $this->assertEquals('Cancelled by user', $analysis->error);
     }
 
     public function test_cancel_completed_analysis_returns_422(): void
@@ -299,7 +301,8 @@ class AnalysisTest extends TestCase
             ->assertJsonPath('message', 'Analysis cancelled.');
 
         $analysis->refresh();
-        $this->assertEquals('cancelled', $analysis->status);
+        $this->assertEquals('failed', $analysis->status);
+        $this->assertEquals('Cancelled by user', $analysis->error);
     }
 
     // -----------------------------------------------------------------
@@ -449,9 +452,9 @@ class AnalysisTest extends TestCase
         $response->assertStatus(403);
     }
 
-    public function test_store_result_skips_update_for_cancelled_analysis(): void
+    public function test_store_result_skips_update_for_failed_analysis(): void
     {
-        $analysis = $this->createAnalysis(['status' => 'cancelled']);
+        $analysis = $this->createAnalysis(['status' => 'failed', 'error' => 'Previous error']);
 
         $response = $this->postJson("/api/internal/analyses/{$analysis->id}/result", [
             'result' => ['forms' => [['selector' => '#form']]],
@@ -460,11 +463,12 @@ class AnalysisTest extends TestCase
         ]);
 
         $response->assertStatus(200)
-            ->assertJsonPath('message', 'Analysis already cancelled.');
+            ->assertJsonPath('message', 'Analysis already failed or cancelled.');
 
-        // Status should remain cancelled
+        // Status should remain failed
         $analysis->refresh();
-        $this->assertEquals('cancelled', $analysis->status);
+        $this->assertEquals('failed', $analysis->status);
+        $this->assertEquals('Previous error', $analysis->error);
         $this->assertNull($analysis->result);
     }
 
@@ -484,7 +488,7 @@ class AnalysisTest extends TestCase
     // artisan formbot:cleanup-stale-analyses — Cleanup stale analyses
     // -----------------------------------------------------------------
 
-    public function test_cleanup_marks_stale_pending_analyses_as_timed_out(): void
+    public function test_cleanup_marks_stale_pending_analyses_as_failed(): void
     {
         // Create a stale pending analysis (created 2 hours ago)
         $stale = $this->createAnalysis(['status' => 'pending']);
@@ -504,7 +508,8 @@ class AnalysisTest extends TestCase
         Artisan::call('formbot:cleanup-stale-analyses');
 
         $stale->refresh();
-        $this->assertEquals('timed_out', $stale->status);
+        $this->assertEquals('failed', $stale->status);
+        $this->assertEquals('Analysis timed out after 1 hour', $stale->error);
         $this->assertNotNull($stale->completed_at);
 
         $recent->refresh();
@@ -514,7 +519,7 @@ class AnalysisTest extends TestCase
         $this->assertEquals('completed', $completed->status);
     }
 
-    public function test_cleanup_marks_stale_analyzing_analyses_as_timed_out(): void
+    public function test_cleanup_marks_stale_analyzing_analyses_as_failed(): void
     {
         $stale = $this->createAnalysis(['status' => 'analyzing']);
         Analysis::where('id', $stale->id)->update([
@@ -524,7 +529,8 @@ class AnalysisTest extends TestCase
         Artisan::call('formbot:cleanup-stale-analyses');
 
         $stale->refresh();
-        $this->assertEquals('timed_out', $stale->status);
+        $this->assertEquals('failed', $stale->status);
+        $this->assertEquals('Analysis timed out after 1 hour', $stale->error);
         $this->assertNotNull($stale->completed_at);
     }
 

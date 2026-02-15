@@ -49,11 +49,11 @@ Capire quanto è il peso per la macchina di una sessione VNC.
 
 Il delete di una analisi non aggiorna la UI.
 
-Capire se gli stati di una analisi come "Paused", mi serva davvero. 
+~~Capire se gli stati di una analisi come "Paused", mi serva davvero. 
 Se non è necessario, meglio rimuovere gli stati inutili (mvp) per semplificare l'interfaccia e il flusso di lavoro.
 Tra l'altro gli stati non sono allineati.
 Vedo usato "paused" ma l'interfaccia non lo permette.
-status: 'pending' | 'analyzing' | 'completed' | 'failed' | 'cancelled' | 'timed_out' | 'editing';
+status: 'pending' | 'analyzing' | 'completed' | 'failed' | 'cancelled' | 'timed_out' | 'editing';~~
 
 ~~tests/test_executor.py::test_execute_simple_single_form FAILED           [ 61%]
 tests/test_executor.py::test_execute_multi_step FAILED                   [ 62%]

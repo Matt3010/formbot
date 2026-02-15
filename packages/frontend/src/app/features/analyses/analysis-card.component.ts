@@ -123,8 +123,6 @@ import { Analysis } from '../../core/models/analysis.model';
     .status-analyzing { background-color: #2196f3 !important; color: white !important; }
     .status-completed { background-color: #4caf50 !important; color: white !important; }
     .status-failed { background-color: #f44336 !important; color: white !important; }
-    .status-cancelled { background-color: #ff9800 !important; color: white !important; }
-    .status-timed_out { background-color: #795548 !important; color: white !important; }
     .status-editing { background-color: #673AB7 !important; color: white !important; }
   `]
 })

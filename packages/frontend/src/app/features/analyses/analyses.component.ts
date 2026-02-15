@@ -47,8 +47,6 @@ import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog.c
               <mat-option value="analyzing">Analyzing</mat-option>
               <mat-option value="completed">Completed</mat-option>
               <mat-option value="failed">Failed</mat-option>
-              <mat-option value="cancelled">Cancelled</mat-option>
-              <mat-option value="timed_out">Timed Out</mat-option>
               <mat-option value="editing">Editing</mat-option>
             </mat-select>
           </mat-form-field>
@@ -167,7 +165,11 @@ export class AnalysesComponent implements OnInit, OnDestroy {
         this.analysisService.cancelAnalysis(analysis.id).subscribe({
           next: () => {
             this.notify.success('Analysis cancelled');
-            this.updateAnalysisInList(analysis.id, { status: 'cancelled' as const });
+            this.updateAnalysisInList(analysis.id, {
+              status: 'failed' as const,
+              error: 'Cancelled by user',
+              completed_at: new Date().toISOString(),
+            });
             this.cleanupSubscription(analysis.id);
           },
           error: () => this.notify.error('Failed to cancel analysis')

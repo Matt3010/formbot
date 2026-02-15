@@ -4,7 +4,7 @@ export interface Analysis {
   target_url: string | null;
   login_url: string | null;
   type: 'simple' | 'login_and_target' | 'next_page';
-  status: 'pending' | 'analyzing' | 'completed' | 'failed' | 'cancelled' | 'timed_out' | 'editing';
+  status: 'pending' | 'analyzing' | 'completed' | 'failed' | 'editing';
   result: any | null;
   error: string | null;
   model: string | null;
