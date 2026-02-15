@@ -896,6 +896,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
       return;
     }
 
+    this.blurVncIfFocused();
     const currentStep = this.steps()[this.activeStepIndex()];
     const suggestedUrl = (currentStep?.page_url || this.targetUrl() || '').trim();
     const enteredUrl = window.prompt('Target page URL for the new step', suggestedUrl);
@@ -942,6 +943,8 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
     const step = this.steps()[this.activeStepIndex()];
     if (!step) return;
 
+    this.blurVncIfFocused();
+
     // Collect login fields with their preset values
     const loginFields = step.fields.map(f => ({
       field_selector: f.field_selector,
@@ -971,6 +974,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
   }
 
   onResumeLogin() {
+    this.blurVncIfFocused();
     this.breakpointWaiting.set(false);
     this.loginProgress.set('Resuming after manual intervention...');
     this.editorService.resumeLogin(this.analysisId()).subscribe({
@@ -1042,9 +1046,11 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
   // --- Confirm / Cancel ---
 
   onConfirmAll() {
-    if (this.navigatingStep()) {
+    if (this.navigatingStep() || this.confirming()) {
       return;
     }
+
+    this.blurVncIfFocused();
     this.confirming.set(true);
     const corrections = this.buildCorrections();
 
@@ -1066,6 +1072,8 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
     if (this.navigatingStep()) {
       return;
     }
+
+    this.blurVncIfFocused();
     this.editorService.cancelEditing(this.analysisId()).subscribe({
       next: () => this.cancelled.emit(),
       error: () => this.cancelled.emit(),
@@ -1119,6 +1127,17 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
   }
 
   // --- Helpers ---
+
+  /**
+   * Blur the VNC iframe if it has focus to prevent focus-related click issues.
+   * This ensures buttons outside the iframe respond to the first click.
+   */
+  private blurVncIfFocused() {
+    const iframe = document.querySelector('.vnc-iframe') as HTMLIFrameElement;
+    if (iframe && document.activeElement === iframe) {
+      iframe.blur();
+    }
+  }
 
   private handleSessionError(err: any) {
     if (err?.status === 409) {

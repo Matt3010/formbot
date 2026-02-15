@@ -13,8 +13,8 @@ Controllare cosa significa campo "Is required" di un field.
 ~~Dopo aver cliccato "Confirm Login & Proceed", sistemare l'aggiornamento della UI.
 Submitting login form... rimane attivo troppo tempo e non dovrebbe funzionare con un timeout ma con i socket on page load.~~
 
-Il tasto confirm all dopo aver selezionato i fields su tutti i target deve essere cliccato solo una volta. 
-Attualmente il primo click spegne il VNC, il secondo click conferma i fields e procede con l'analisi.
+~~Il tasto confirm all dopo aver selezionato i fields su tutti i target deve essere cliccato solo una volta. 
+Attualmente il primo click spegne il VNC, il secondo click conferma i fields e procede con l'analisi.~~
 
 Lo step 3 Workflow Graph ha necessità di un rework grafico in modo tale che sia molto più interattivo e moderno. Un utente consumer
 potrebbe non capire cosa fare.
