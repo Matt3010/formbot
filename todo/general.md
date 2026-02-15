@@ -10,8 +10,8 @@ Sistemare la UI per la gestione degli strumenti che appare verticale. Il layout 
 
 Controllare cosa significa campo "Is required" di un field.
 
-Dopo aver cliccato "Confirm Login & Proceed", sistemare l'aggiornamento della UI.
-Submitting login form... rimane attivo troppo tempo e non dovrebbe funzionare con un timeout ma con i socket on page load.
+~~Dopo aver cliccato "Confirm Login & Proceed", sistemare l'aggiornamento della UI.
+Submitting login form... rimane attivo troppo tempo e non dovrebbe funzionare con un timeout ma con i socket on page load.~~
 
 Il tasto confirm all dopo aver selezionato i fields su tutti i target deve essere cliccato solo una volta. 
 Attualmente il primo click spegne il VNC, il secondo click conferma i fields e procede con l'analisi.
@@ -79,3 +79,7 @@ forse è dovuto dall'implementazione di MINIO e gli screenshots?~~
 
 Ogni sessione dura 30 minuti, inserire un timer di countdown per mostrare all'utente quanto tempo 
 rimane prima che la sessione scada, in modo da evitare perdite di dati o interruzioni improvvise durante l'analisi.
+
+Dividere lo human breakpoint in Pre submit e Post submit, 
+in modo da avere un controllo più granulare sui processi di analisi e permettere
+agli utenti di intervenire in momenti specifici del flusso di lavoro.

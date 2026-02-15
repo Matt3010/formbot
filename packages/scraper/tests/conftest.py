@@ -38,30 +38,6 @@ MULTI_FORM_HTML = """
 </html>
 """
 
-CAPTCHA_FORM_HTML = """
-<html>
-<body>
-<form id="captcha-form" action="/submit" method="post">
-    <input id="name" name="name" type="text" />
-    <div class="g-recaptcha" data-sitekey="xxxx"></div>
-    <button type="submit">Submit</button>
-</form>
-</body>
-</html>
-"""
-
-TWO_FACTOR_HTML = """
-<html>
-<body>
-<form id="otp-form" action="/verify" method="post">
-    <label>Enter your 6-digit code</label>
-    <input id="otp" name="otp" type="text" maxlength="6" />
-    <button type="submit">Verify</button>
-</form>
-</body>
-</html>
-"""
-
 NO_FORMS_HTML = """
 <html>
 <body>

@@ -358,7 +358,7 @@ async def test_execute_dry_run(mock_db, mock_vnc_manager):
 
 
 @pytest.mark.asyncio
-async def test_execute_captcha_triggers_vnc_pause(mock_db):
+async def test_execute_with_human_breakpoint_triggers_vnc_pause(mock_db):
     """When human_breakpoint=True, a VNC pause is triggered for manual intervention."""
     task_id = uuid.uuid4()
     fd_id = uuid.uuid4()
@@ -366,8 +366,8 @@ async def test_execute_captcha_triggers_vnc_pause(mock_db):
     task = make_task(id=task_id)
     form_def = make_form_definition(
         id=fd_id, task_id=task_id, step_order=1,
-        page_url="https://example.com/captcha",
-        form_selector="#captcha-form", submit_selector="#submit",
+        page_url="https://example.com/test",
+        form_selector="#test-form", submit_selector="#submit",
         human_breakpoint=True,
     )
     field = make_form_field(
@@ -400,7 +400,7 @@ async def test_execute_captcha_triggers_vnc_pause(mock_db):
     # VNC display was reserved
     vnc_mock.reserve_display.assert_awaited_once()
 
-    # VNC was activated (captcha pause)
+    # VNC was activated for manual intervention
     vnc_mock.activate_vnc.assert_awaited_once()
 
     # VNC was waited on
@@ -411,7 +411,7 @@ async def test_execute_captcha_triggers_vnc_pause(mock_db):
 
 
 @pytest.mark.asyncio
-async def test_execute_2fa_triggers_post_submit_vnc(mock_db):
+async def test_execute_with_breakpoint_triggers_post_submit_vnc(mock_db):
     """When human_breakpoint=True, VNC pause is triggered for manual intervention during execution."""
     task_id = uuid.uuid4()
     fd_id = uuid.uuid4()
@@ -468,7 +468,7 @@ async def test_execute_vnc_timeout_fails(mock_db):
     task = make_task(id=task_id)
     form_def = make_form_definition(
         id=fd_id, task_id=task_id, step_order=1,
-        page_url="https://example.com/captcha",
+        page_url="https://example.com/test",
         form_selector="#form", submit_selector="#submit",
         human_breakpoint=True,
     )
@@ -924,7 +924,7 @@ async def test_execute_dry_run_multi_step(mock_db, mock_vnc_manager):
 
 
 @pytest.mark.asyncio
-async def test_no_duplicate_step_in_steps_log_after_captcha(mock_db):
+async def test_no_duplicate_step_in_steps_log_after_manual_intervention(mock_db):
     """After manual intervention is resolved, steps_log should contain exactly one entry
     per step — no duplicates from _vnc_pause + main loop both appending.
 
@@ -937,8 +937,8 @@ async def test_no_duplicate_step_in_steps_log_after_captcha(mock_db):
     task = make_task(id=task_id)
     form_def = make_form_definition(
         id=fd_id, task_id=task_id, step_order=1,
-        page_url="https://example.com/captcha",
-        form_selector="#captcha-form", submit_selector="button[type='submit']",
+        page_url="https://example.com/test",
+        form_selector="#test-form", submit_selector="button[type='submit']",
         human_breakpoint=True,
     )
     field = make_form_field(
@@ -999,7 +999,7 @@ async def test_vnc_cleanup_on_execution_exception(mock_db):
     task = make_task(id=task_id)
     form_def = make_form_definition(
         id=fd_id, task_id=task_id, step_order=1,
-        page_url="https://example.com/captcha",
+        page_url="https://example.com/test",
         form_selector="#form", submit_selector="#submit",
         human_breakpoint=True,
     )
@@ -1048,7 +1048,7 @@ async def test_vnc_cleanup_on_timeout_failure(mock_db):
     task = make_task(id=task_id)
     form_def = make_form_definition(
         id=fd_id, task_id=task_id, step_order=1,
-        page_url="https://example.com/captcha",
+        page_url="https://example.com/test",
         form_selector="#form", submit_selector="#submit",
         human_breakpoint=True,
     )

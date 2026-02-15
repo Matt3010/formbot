@@ -83,7 +83,7 @@ export interface TestSelectorResult {
 
 export interface LoginExecutionProgressEvent {
   analysis_id: string;
-  phase: string;       // 'filling' | 'submitting' | 'waiting_redirect' | 'navigating' | 'loading_target' | 'analyzing' |  'captcha' | '2fa'| 'human_breakpoint'
+  phase: string;       // 'filling' | 'submitting' | 'waiting_redirect' | 'navigating' | 'loading_target' | 'analyzing' | 'human_breakpoint'
   message: string;
   needs_vnc?: boolean;
 }

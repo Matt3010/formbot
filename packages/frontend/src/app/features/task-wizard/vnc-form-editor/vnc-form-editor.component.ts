@@ -158,7 +158,7 @@ import { VncStepTabsComponent } from './vnc-step-tabs.component';
                 <mat-spinner diameter="18"></mat-spinner>
                 <span>{{ loginProgress() }}</span>
               </div>
-              @if (captchaWaiting()) {
+              @if (breakpointWaiting()) {
                 <button mat-raised-button color="accent" (click)="onResumeLogin()">
                   <mat-icon>play_arrow</mat-icon> Resume
                 </button>
@@ -382,7 +382,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
   currentPhase = signal<EditorPhase>('target');
   loginExecuting = signal(false);
   loginProgress = signal('');
-  captchaWaiting = signal(false);
+  breakpointWaiting = signal(false);
   navigatingStep = signal(false);
   navigationMessage = signal('Loading next target page...');
 
@@ -463,12 +463,12 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
     // Login execution events
     channel.bind('LoginExecutionProgress', (data: LoginExecutionProgressEvent) => {
       this.loginProgress.set(data.message);
-      this.captchaWaiting.set(data.phase === 'captcha' || data.phase === '2fa' || data.phase === 'human_breakpoint');
+      this.breakpointWaiting.set(data.phase === 'human_breakpoint');
     });
 
     channel.bind('LoginExecutionComplete', (data: LoginExecutionCompleteEvent) => {
       this.loginExecuting.set(false);
-      this.captchaWaiting.set(false);
+      this.breakpointWaiting.set(false);
       if (data.success) {
         this.transitionToTargetPhase(data.target_result, data.target_fields || []);
       } else {
@@ -971,12 +971,12 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
   }
 
   onResumeLogin() {
-    this.captchaWaiting.set(false);
+    this.breakpointWaiting.set(false);
     this.loginProgress.set('Resuming after manual intervention...');
     this.editorService.resumeLogin(this.analysisId()).subscribe({
       error: () => {
         this.loginProgress.set('Failed to resume. Try again.');
-        this.captchaWaiting.set(true);
+        this.breakpointWaiting.set(true);
       },
     });
   }
