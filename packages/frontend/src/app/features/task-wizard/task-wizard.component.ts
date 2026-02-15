@@ -67,20 +67,23 @@ import { WorkflowGraphComponent } from './workflow-graph/workflow-graph.componen
         <mat-step [completed]="confirmedFromVnc().length > 0">
           <ng-template matStepLabel>Configure Forms</ng-template>
           @if (vncAnalysisId()) {
-            <app-vnc-form-editor
-              [analysisId]="vncAnalysisId()!"
-              [analysisResult]="vncAnalysisResult()"
-              [resumeCorrections]="vncResumeCorrections()"
-              [requiresLogin]="requiresLogin()"
-              [targetUrl]="vncTargetUrl()"
-              (confirmed)="onVncConfirmed($event)"
-              (cancelled)="onVncCancelled()"
-            />
+            <!-- Force remount when analysisId changes by using @for with track -->
+            @for (analysisId of [vncAnalysisId()!]; track analysisId) {
+              <app-vnc-form-editor
+                [analysisId]="analysisId"
+                [analysisResult]="vncAnalysisResult()"
+                [resumeCorrections]="vncResumeCorrections()"
+                [requiresLogin]="requiresLogin()"
+                [targetUrl]="vncTargetUrl()"
+                (confirmed)="onVncConfirmed($event)"
+                (cancelled)="onVncCancelled()"
+              />
+            }
           } @else {
             <p>Click "Next" on Step 1 after analyzing a URL to start the visual editor.</p>
           }
           <div class="step-actions mt-2">
-            <button mat-button matStepperPrevious>
+            <button mat-button matStepperPrevious (click)="onVncStepBack()">
               <mat-icon>arrow_back</mat-icon> Back
             </button>
           </div>
@@ -483,10 +486,28 @@ export class TaskWizardComponent implements OnInit {
   }
 
   onVncCancelled() {
+    this.cleanupVncSession();
+    this.notify.info('Visual verification cancelled');
+  }
+
+  onVncStepBack() {
+    // When user clicks "Back" from VNC step, cleanup the VNC session
+    this.cleanupVncSession();
+  }
+
+  private cleanupVncSession() {
+    // Cancel the VNC editing session if active
+    const currentVncId = this.vncAnalysisId();
+    if (currentVncId) {
+      this.vncEditorService.cancelEditing(currentVncId).subscribe({
+        error: () => {} // Ignore errors, session might already be closed
+      });
+    }
+
+    // Reset VNC state
     this.vncAnalysisId.set(null);
     this.vncResumeCorrections.set(null);
     this.workflowForms.set([]);
-    this.notify.info('Visual verification cancelled');
   }
 
   onScheduleChanged(data: ScheduleData) {

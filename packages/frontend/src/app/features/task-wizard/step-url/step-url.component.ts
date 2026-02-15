@@ -153,6 +153,10 @@ export class StepUrlComponent {
   analyze(url: string, isLogin: boolean) {
     if (!url) return;
 
+    // If there's already an analysis in progress, we should ideally cancel it first
+    // to avoid having multiple VNC sessions for the same task
+    const previousAnalysisId = this.currentAnalysisId();
+
     const setter = isLogin ? this.analyzingLogin : this.analyzing;
     setter.set(true);
 
