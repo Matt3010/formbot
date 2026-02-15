@@ -153,18 +153,18 @@ export class StepUrlComponent {
   analyze(url: string, isLogin: boolean) {
     if (!url) return;
 
-    // If there's already an analysis in progress, we should ideally cancel it first
+    // If there's already a task in progress, we should ideally cancel it first
     // to avoid having multiple VNC sessions for the same task
-    const previousAnalysisId = this.currentTaskId();
+    const previousTaskId = this.currentTaskId();
 
     const setter = isLogin ? this.analyzingLogin : this.analyzing;
     setter.set(true);
 
-    this.taskService.analyzeUrl(url).subscribe({
+    this.taskService.createForEditing(url).subscribe({
       next: (response) => {
         setter.set(false);
-        const analysisId = response.task_id;
-        this.currentTaskId.set(analysisId);
+        const taskId = response.task_id;
+        this.currentTaskId.set(taskId);
 
         if (isLogin) {
           this.emitLoginConfig();

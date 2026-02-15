@@ -12,12 +12,12 @@ return new class extends Migration
      */
     public function up(): void
     {
-        // First, drop the existing status column check constraint and recreate with 'editing'
-        DB::statement("ALTER TABLE tasks DROP CONSTRAINT IF EXISTS tasks_status_check");
-        DB::statement("ALTER TABLE tasks ADD CONSTRAINT tasks_status_check CHECK (status IN ('editing', 'draft', 'active', 'paused', 'completed', 'failed'))");
-
-        // Update default status to 'editing' for new tasks
-        DB::statement("ALTER TABLE tasks ALTER COLUMN status SET DEFAULT 'editing'");
+        // PostgreSQL-specific constraint modifications (skip for SQLite)
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::statement("ALTER TABLE tasks DROP CONSTRAINT IF EXISTS tasks_status_check");
+            DB::statement("ALTER TABLE tasks ADD CONSTRAINT tasks_status_check CHECK (status IN ('editing', 'draft', 'active', 'paused', 'completed', 'failed'))");
+            DB::statement("ALTER TABLE tasks ALTER COLUMN status SET DEFAULT 'editing'");
+        }
 
         Schema::table('tasks', function (Blueprint $table) {
             // VNC editing session fields
@@ -60,9 +60,11 @@ return new class extends Migration
             ]);
         });
 
-        // Restore original status constraint and default
-        DB::statement("ALTER TABLE tasks DROP CONSTRAINT IF EXISTS tasks_status_check");
-        DB::statement("ALTER TABLE tasks ADD CONSTRAINT tasks_status_check CHECK (status IN ('draft', 'active', 'paused', 'completed', 'failed'))");
-        DB::statement("ALTER TABLE tasks ALTER COLUMN status SET DEFAULT 'draft'");
+        // PostgreSQL-specific constraint modifications (skip for SQLite)
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::statement("ALTER TABLE tasks DROP CONSTRAINT IF EXISTS tasks_status_check");
+            DB::statement("ALTER TABLE tasks ADD CONSTRAINT tasks_status_check CHECK (status IN ('draft', 'active', 'paused', 'completed', 'failed'))");
+            DB::statement("ALTER TABLE tasks ALTER COLUMN status SET DEFAULT 'draft'");
+        }
     }
 };

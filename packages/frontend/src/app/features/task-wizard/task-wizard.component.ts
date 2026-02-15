@@ -45,7 +45,7 @@ import { WorkflowGraphComponent } from './workflow-graph/workflow-graph.componen
         <input matInput [formControl]="taskNameControl" placeholder="My Automation Task">
       </mat-form-field>
 
-      <mat-stepper [linear]="!resumingFromAnalysis()" #stepper>
+      <mat-stepper [linear]="!resumingFromTask()" #stepper>
         <!-- Step 1: URL & Analyze -->
         <mat-step [completed]="detectedForms().length > 0">
           <ng-template matStepLabel>URL & Analyze</ng-template>
@@ -172,8 +172,7 @@ export class TaskWizardComponent implements OnInit, OnDestroy {
 
   isEditing = signal(false);
   editingTaskId = signal<string | null>(null);
-  resumingFromAnalysis = signal(false);
-  resumeAnalysisId = signal<string | null>(null);
+  resumingFromTask = signal(false);
   saving = signal(false);
 
   // Login config
@@ -207,25 +206,12 @@ export class TaskWizardComponent implements OnInit, OnDestroy {
       return;
     }
 
-    // Check for analysis resume flow
-    const analysisId = this.route.snapshot.queryParamMap.get('analysisId');
+    // Check for task editing resume flow
+    const taskId = this.route.snapshot.queryParamMap.get('taskId');
     const editingMode = this.route.snapshot.queryParamMap.get('editing');
-    if (analysisId) {
-      this.resumeAnalysisId.set(analysisId);
-      const pending = this.analysisService.consumePendingResume();
-
-      if (editingMode === 'resume') {
-        // Resume VNC editing from saved draft
-        this.resumeVncEditing(analysisId, pending);
-      } else if (pending && pending.id === analysisId) {
-        this.applyAnalysis(pending);
-      } else {
-        // Fallback: fetch from API (e.g., user refreshed the page)
-        this.analysisService.getAnalysis(analysisId).subscribe({
-          next: (res) => this.applyAnalysis(res.data),
-          error: () => this.notify.error('Failed to load analysis for resume'),
-        });
-      }
+    if (taskId && editingMode === 'resume') {
+      // Resume VNC editing from saved draft
+      this.resumeVncEditing(taskId);
     }
   }
 
@@ -234,26 +220,29 @@ export class TaskWizardComponent implements OnInit, OnDestroy {
     this.cleanupVncSession();
   }
 
-  private resumeVncEditing(analysisId: string, pending: Analysis | null) {
-    this.resumingFromAnalysis.set(true);
-    this.vncTaskId.set(analysisId);
+  private resumeVncEditing(taskId: string) {
+    this.resumingFromTask.set(true);
+    this.vncTaskId.set(taskId);
 
-    // Set URL in step-url and load corrections if we have the analysis data
-    if (pending) {
-      if (pending.user_corrections) {
-        this.vncResumeCorrections.set(pending.user_corrections);
-      }
-      setTimeout(() => {
-        if (this.stepUrl) {
-          this.stepUrl.setUrl(pending.url);
+    // Load task data to populate form
+    this.taskService.getTask(taskId).subscribe({
+      next: (res) => {
+        const task = res.data;
+        if (task.user_corrections) {
+          this.vncResumeCorrections.set(task.user_corrections);
         }
-      });
-    }
+        setTimeout(() => {
+          if (this.stepUrl) {
+            this.stepUrl.setUrl(task.target_url || task.current_editing_url || '');
+          }
+        });
+      },
+      error: () => this.notify.error('Failed to load task data'),
+    });
 
     // Call resume endpoint to re-open VNC with saved draft
-    this.vncEditorService.resumeEditing(analysisId).subscribe({
+    this.vncEditorService.resumeEditing(taskId).subscribe({
       next: (res) => {
-        // Backend may return user_corrections in response
         if (res?.user_corrections && !this.vncResumeCorrections()) {
           this.vncResumeCorrections.set(res.user_corrections);
         }
@@ -262,92 +251,16 @@ export class TaskWizardComponent implements OnInit, OnDestroy {
           if (this.stepper) {
             this.stepper.selectedIndex = 1;
           }
-          setTimeout(() => this.resumingFromAnalysis.set(false), 100);
+          setTimeout(() => this.resumingFromTask.set(false), 100);
         });
       },
       error: (err) => {
         this.notify.error(err.error?.message || 'Failed to resume editing session');
-        this.resumingFromAnalysis.set(false);
+        this.resumingFromTask.set(false);
       },
     });
   }
 
-  private applyAnalysis(analysis: Analysis) {
-    if (analysis.status !== 'completed' || !analysis.result) {
-      this.notify.warn('This analysis is not completed yet');
-      return;
-    }
-
-    this.resumingFromAnalysis.set(true);
-
-    // Build FormDefinition[] from the analysis result
-    const forms: FormDefinition[] = (analysis.result.forms || []).map((form: any, idx: number) => ({
-      id: form.id || `temp-${idx}`,
-      task_id: '',
-      step_order: form.step_order ?? idx + 1,
-      depends_on_step_order: form.depends_on_step_order ?? null,
-      page_url: form.page_url || analysis.url,
-      form_type: form.form_type || 'target',
-      form_selector: form.form_selector || '',
-      submit_selector: form.submit_selector || '',
-      human_breakpoint: form.human_breakpoint ?? false,
-      fields: (form.fields || []).map((field: any, fIdx: number) => ({
-        id: field.id || `temp-field-${idx}-${fIdx}`,
-        form_definition_id: form.id || `temp-${idx}`,
-        field_name: field.field_name || field.name || '',
-        field_type: field.field_type || field.type || 'text',
-        field_selector: field.field_selector || field.selector || '',
-        field_purpose: field.field_purpose || field.purpose || null,
-        preset_value: field.preset_value || null,
-        is_sensitive: field.is_sensitive ?? false,
-        is_file_upload: field.is_file_upload ?? false,
-        is_required: field.is_required ?? false,
-        options: field.options || null,
-        sort_order: field.sort_order ?? fIdx,
-      })),
-      created_at: '',
-      updated_at: '',
-    }));
-
-    // Set login config if applicable
-    if (analysis.type === 'login_and_target' && analysis.login_url) {
-      this.requiresLogin.set(true);
-      this.loginUrl.set(analysis.login_url);
-    }
-
-    this.detectedForms.set(this.normalizeWorkflowForms(forms));
-
-    // Set URL and login config in step-url, then start VNC session
-    setTimeout(() => {
-      if (this.stepUrl) {
-        this.stepUrl.setUrl(analysis.url);
-        this.stepUrl.currentAnalysisId.set(analysis.id);
-        if (analysis.type === 'login_and_target' && analysis.login_url) {
-          this.stepUrl.setLoginConfig({
-            requires_login: true,
-            login_url: analysis.login_url,
-          });
-        }
-      }
-
-      // Start VNC session and advance to Step 2
-      this.vncTaskId.set(analysis.id);
-      this.vncAnalysisResult.set(analysis.result);
-      this.taskService.analyzeInteractive(analysis.id).subscribe({
-        next: () => {
-          this.notify.info('Starting visual editor...');
-          if (this.stepper) {
-            this.stepper.selectedIndex = 1;
-          }
-          setTimeout(() => this.resumingFromAnalysis.set(false), 100);
-        },
-        error: (err) => {
-          this.notify.error(err.error?.message || 'Failed to start visual editor');
-          this.resumingFromAnalysis.set(false);
-        },
-      });
-    });
-  }
 
   private loadTask(id: string) {
     this.taskService.getTask(id).subscribe({
@@ -415,58 +328,42 @@ export class TaskWizardComponent implements OnInit, OnDestroy {
   }
 
   proceedToVncEditor() {
-    const analysisId = this.stepUrl.currentAnalysisId();
-    if (!analysisId) {
-      this.notify.error('No analysis available. Please analyze the URL first.');
+    const taskId = this.stepUrl.currentTaskId();
+    if (!taskId) {
+      this.notify.error('No task available. Please analyze the URL first.');
       return;
     }
 
-    this.vncTaskId.set(analysisId);
+    this.vncTaskId.set(taskId);
     this.vncAnalysisResult.set(null);
 
-    // When login is required, pass the login URL so VNC opens the login page.
-    // The target URL is stored separately for the login→target transition.
+    // Determine the URL to start editing with
+    let editUrl = this.stepUrl.urlControl.value;
     if (this.requiresLogin()) {
       const loginUrl = this.stepUrl.loginUrlControl.value;
       const targetUrl = this.stepUrl.urlControl.value;
       this.vncTargetUrl.set(targetUrl || null);
-
-      // Start editing with the login URL override
-      this.taskService.analyzeInteractiveWithUrl(analysisId, loginUrl).subscribe({
-        next: () => {
-          this.notify.info('Starting visual editor (login page)...');
-          this.resumingFromAnalysis.set(true);
-          setTimeout(() => {
-            if (this.stepper) {
-              this.stepper.selectedIndex = 1;
-            }
-            setTimeout(() => this.resumingFromAnalysis.set(false), 100);
-          });
-        },
-        error: (err) => {
-          this.notify.error(err.error?.message || 'Failed to start visual editor');
-        },
-      });
+      editUrl = loginUrl;
     } else {
       this.vncTargetUrl.set(null);
-
-      // Start the interactive session via backend
-      this.taskService.analyzeInteractive(analysisId).subscribe({
-        next: () => {
-          this.notify.info('Starting visual editor...');
-          this.resumingFromAnalysis.set(true);
-          setTimeout(() => {
-            if (this.stepper) {
-              this.stepper.selectedIndex = 1;
-            }
-            setTimeout(() => this.resumingFromAnalysis.set(false), 100);
-          });
-        },
-        error: (err) => {
-          this.notify.error(err.error?.message || 'Failed to start visual editor');
-        },
-      });
     }
+
+    // Start the VNC editing session
+    this.vncEditorService.startEditing(taskId, editUrl).subscribe({
+      next: () => {
+        this.notify.info('Starting visual editor...');
+        this.resumingFromTask.set(true);
+        setTimeout(() => {
+          if (this.stepper) {
+            this.stepper.selectedIndex = 1;
+          }
+          setTimeout(() => this.resumingFromTask.set(false), 100);
+        });
+      },
+      error: (err) => {
+        this.notify.error(err.error?.message || 'Failed to start visual editor');
+      },
+    });
   }
 
   onVncConfirmed(forms: FormDefinition[]) {
@@ -610,7 +507,6 @@ export class TaskWizardComponent implements OnInit, OnDestroy {
     request.subscribe({
       next: (res) => {
         this.saving.set(false);
-        this.linkAnalysisIfNeeded(res.data.id);
         this.notify.success('Task saved as draft');
         this.router.navigate(['/tasks', res.data.id]);
       },
@@ -631,7 +527,6 @@ export class TaskWizardComponent implements OnInit, OnDestroy {
 
     request.subscribe({
       next: (res) => {
-        this.linkAnalysisIfNeeded(res.data.id);
         this.taskService.activateTask(res.data.id).subscribe({
           next: () => {
             this.saving.set(false);
@@ -652,12 +547,4 @@ export class TaskWizardComponent implements OnInit, OnDestroy {
     });
   }
 
-  private linkAnalysisIfNeeded(taskId: string) {
-    const analysisId = this.resumeAnalysisId();
-    if (analysisId) {
-      this.analysisService.linkTask(analysisId, taskId).subscribe({
-        error: () => console.warn('Failed to link analysis to task'),
-      });
-    }
-  }
 }
