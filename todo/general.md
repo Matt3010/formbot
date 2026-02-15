@@ -13,8 +13,8 @@ Controllare cosa significa campo "Is required" di un field.
 ~~Dopo aver cliccato "Confirm Login & Proceed", sistemare l'aggiornamento della UI.
 Submitting login form... rimane attivo troppo tempo e non dovrebbe funzionare con un timeout ma con i socket on page load.~~
 
-~~Il tasto confirm all dopo aver selezionato i fields su tutti i target deve essere cliccato solo una volta. 
-Attualmente il primo click spegne il VNC, il secondo click conferma i fields e procede con l'analisi.~~
+Il tasto confirm all dopo aver selezionato i fields su tutti i target deve essere cliccato solo una volta. 
+Attualmente il primo click spegne il VNC, il secondo click conferma i fields e procede con l'analisi.
 
 Lo step 3 Workflow Graph ha necessità di un rework grafico in modo tale che sia molto più interattivo e moderno. Un utente consumer
 potrebbe non capire cosa fare.
@@ -30,9 +30,6 @@ Stessa cosa per Action Delay, se non è necessario, meglio rimuoverlo per sempli
 
 Capire cosa è Max Parallel Option e se per una analisi è necessario specificarlo o se di default può essere sempre impostata 
 a 1. (Lasciare comunque i controlli sul be se effettivamente è un setting utile per una analisi).
-
-La modifica di un vnc dovrebbe ricompilare i fields che possiede (se ancora validi). Quelli non validi invece dovrebbero essere nella UI 
-evidenziati di un colore ad hoc ed eventualmente cancellati.
 
 ~~Permettere all'utente di poter selezionare un file per gli input di tipo file (abbiamo già l'implementazione MINIO).
 (Se già non possibile).~~
@@ -77,12 +74,44 @@ tests/test_executor.py::test_vnc_cleanup_on_execution_exception FAILED   [ 80%]
 tests/test_executor.py::test_vnc_cleanup_on_timeout_failure FAILED
 forse è dovuto dall'implementazione di MINIO e gli screenshots?~~
 
-Ogni sessione dura 30 minuti, inserire un timer di countdown per mostrare all'utente quanto tempo 
+!Ogni sessione dura 30 minuti, inserire un timer di countdown per mostrare all'utente quanto tempo 
 rimane prima che la sessione scada, in modo da evitare perdite di dati o interruzioni improvvise durante l'analisi.
 
-Dividere lo human breakpoint in Pre submit e Post submit, 
+!!Dividere lo human breakpoint in Pre submit e Post submit, 
 in modo da avere un controllo più granulare sui processi di analisi e permettere
 agli utenti di intervenire in momenti specifici del flusso di lavoro.
 
 I test attualmente girano su sqlite, sarebbe bello usare pgsql cosi non è necessario fare una implementazione ad hoc 
 per sqlite.
+
+!!!!!Differenza tra analysis e tasks? mi serve questa differenza? Se no sarebbe meglio unificare i concetti e cancellare le colonne
+che non mi servono piu. se servono comunque cancellare colonne che non mi servono piu.
+Possiamo anche pensare di togliere le analysis da tutta l'infrastruttura e lasciare solo le tasks (se si cancella una task si perde la sessione e si ricomincia da capo), 
+in modo da semplificare il modello dati e la gestione delle analisi.
+-> (Controlla se questa cosa serve ancora se cancello le analisi e lascio solo le tasks)
+La modifica di un vnc dovrebbe ricompilare i fields che possiede (se ancora validi). Quelli non validi invece dovrebbero essere nella UI
+evidenziati di un colore ad hoc ed eventualmente cancellati.
+
+Quando clicco con un tool su un campo nel VNC, tutto il contenuto si espande e zooma un po. 
+Per di piu la view è leggermente tagliata a destra.
+
+Alcuni submit (magari anche altri campi cliccat nel VNC) non hanno un nome. O mettere sempre a tutti qualcosa di default
+o risolvere questo bug.
+
+!Gestire elementi che aprono tooltip, modali o elementi in overlay.
+
+Quando scrollo la pagina e ho selezionato precedentemente un tasto submit (forse succede anche con altri campi),
+l' highlight del campo è traslato rispetto l' elemento.
+
+!!!!This XML file does not appear to have any style information associated with it. The document tree is shown below.
+<Error>
+<Code>SignatureDoesNotMatch</Code>
+<Message>The request signature we calculated does not match the signature you provided. Check your key and signing method.</Message>
+<Key>103/a1166828-0cf6-4617-831c-daddbdbaffbc_final.png</Key>
+<BucketName>formbot-screenshots</BucketName>
+<Resource>/formbot-screenshots/103/a1166828-0cf6-4617-831c-daddbdbaffbc_final.png</Resource>
+<RequestId>18947B4F8A18F205</RequestId>
+<HostId>dd9025bab4ad464b049177c95eb6ebf374d3b3fd1af9251148b658df7ac2e3e8</HostId>
+</Error>
+
+Cosa vuol dire filesystem legacy nelle stats su sezione screenshot?
