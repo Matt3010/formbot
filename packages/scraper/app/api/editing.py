@@ -314,11 +314,15 @@ async def execute_login(request: ExecuteLoginRequest):
                 await page.keyboard.press("Enter")
 
             # Allow time for cookies and redirects
+            broadcaster.trigger_analysis(analysis_id, "LoginExecutionProgress", {
+                "phase": "waiting_redirect",
+                "message": "Waiting for page redirect...",
+            })
             try:
-                await page.wait_for_load_state("load", timeout=12000)
-                await page.wait_for_timeout(2500)
+                await page.wait_for_load_state("load", timeout=15000)
             except Exception:
-                await page.wait_for_timeout(3500)
+                pass
+            await page.wait_for_timeout(800)
 
             # Manual Interventions
             if request.human_breakpoint:
@@ -331,7 +335,18 @@ async def execute_login(request: ExecuteLoginRequest):
             })
 
             await page.goto(request.target_url, wait_until="domcontentloaded", timeout=45000)
-            await page.wait_for_timeout(3000)
+
+            # Wait for target page to be fully loaded
+            try:
+                await page.wait_for_load_state("load", timeout=15000)
+            except Exception:
+                pass
+            await page.wait_for_timeout(800)
+
+            broadcaster.trigger_analysis(analysis_id, "LoginExecutionProgress", {
+                "phase": "loading_target",
+                "message": "Target page loaded, preparing editor...",
+            })
 
             # Prepare Target Phase
             target_result = {
