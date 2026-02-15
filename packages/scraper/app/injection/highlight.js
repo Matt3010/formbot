@@ -260,73 +260,85 @@
     e.preventDefault();
     e.stopPropagation();
 
-    if (_mode === 'select') {
-      // Find which overlay field was clicked
-      var clickedIndex = -1;
-      for (var i = 0; i < _fields.length; i++) {
-        var el = getElement(_fields[i].field_selector);
-        if (el && (el === target || el.contains(target))) {
-          clickedIndex = i;
-          break;
-        }
+    // Auto-mode logic: check if clicked element is already a tracked field
+    var clickedIndex = -1;
+    for (var i = 0; i < _fields.length; i++) {
+      var el = getElement(_fields[i].field_selector);
+      if (el && (el === target || el.contains(target))) {
+        clickedIndex = i;
+        break;
       }
-      if (clickedIndex >= 0) {
-        var f = _fields[clickedIndex];
-        if (window.__formbot_onFieldSelected) {
-          window.__formbot_onFieldSelected(JSON.stringify({
-            index: clickedIndex,
-            selector: f.field_selector,
-            name: f.field_name,
-            type: f.field_type,
-            purpose: f.field_purpose || '',
-            value: f.preset_value || '',
-          }));
-        }
-      }
-    } else if (_mode === 'add') {
-      // Find closest interactive form element — ignore non-interactive elements
-      var formEl = target.closest('input, select, textarea, button, [contenteditable="true"]');
-      if (!formEl) return;
+    }
 
-      var selector = generateSelector(formEl);
-      var info = detectFieldInfo(formEl);
-
-      // Detect parent <form> element
-      var parentForm = formEl.closest('form');
-      var formSelector = parentForm ? generateSelector(parentForm) : '';
-      // Also detect submit button within the form
-      var submitSelector = '';
-      if (parentForm) {
-        var submitBtn = parentForm.querySelector('button[type="submit"], input[type="submit"], button:not([type])');
-        if (submitBtn) submitSelector = generateSelector(submitBtn);
-      }
-
-      if (window.__formbot_onFieldAdded) {
-        window.__formbot_onFieldAdded(JSON.stringify({
-          selector: selector,
-          tagName: info.tagName,
-          type: info.type,
-          name: info.name,
-          value: info.value,
-          purpose: info.purpose,
-          form_selector: formSelector,
-          submit_selector: submitSelector,
+    // If clicked on an existing field → auto-select (even if mode was 'add')
+    if (clickedIndex >= 0) {
+      var f = _fields[clickedIndex];
+      if (window.__formbot_onFieldSelected) {
+        window.__formbot_onFieldSelected(JSON.stringify({
+          index: clickedIndex,
+          selector: f.field_selector,
+          name: f.field_name,
+          type: f.field_type,
+          purpose: f.field_purpose || '',
+          value: f.preset_value || '',
         }));
       }
-    } else if (_mode === 'remove') {
-      // Find which overlay field was clicked
-      for (var i = 0; i < _fields.length; i++) {
-        var el = getElement(_fields[i].field_selector);
-        if (el && (el === target || el.contains(target))) {
-          if (window.__formbot_onFieldRemoved) {
-            window.__formbot_onFieldRemoved(JSON.stringify({
-              index: i,
-              selector: _fields[i].field_selector,
-            }));
-          }
-          break;
-        }
+      return;
+    }
+
+    // If in explicit 'remove' mode and clicked on a non-field, ignore
+    if (_mode === 'remove') return;
+
+    // Otherwise, try to add the clicked element as a new field (auto-add)
+    // Find closest interactive form element — ignore non-interactive elements
+    var formEl = target.closest('input, select, textarea, button, [contenteditable="true"]');
+    if (!formEl) return;
+
+    var selector = generateSelector(formEl);
+
+    // Check if this selector already exists (duplicate prevention)
+    var isDuplicate = false;
+    for (var i = 0; i < _fields.length; i++) {
+      if (_fields[i].field_selector === selector) {
+        isDuplicate = true;
+        break;
       }
+    }
+
+    if (isDuplicate) {
+      // Flash a warning (orange outline)
+      var origOutline = formEl.style.outline;
+      formEl.style.outline = '3px solid #FF9800';
+      setTimeout(function () {
+        formEl.style.outline = origOutline;
+      }, 800);
+      console.log('[FormBot] Field already added:', selector);
+      return;
+    }
+
+    var info = detectFieldInfo(formEl);
+
+    // Detect parent <form> element
+    var parentForm = formEl.closest('form');
+    var formSelector = parentForm ? generateSelector(parentForm) : '';
+    // Also detect submit button within the form
+    var submitSelector = '';
+    if (parentForm) {
+      var submitBtn = parentForm.querySelector('button[type="submit"], input[type="submit"], button:not([type])');
+      if (submitBtn) submitSelector = generateSelector(submitBtn);
+    }
+
+    if (window.__formbot_onFieldAdded) {
+      window.__formbot_onFieldAdded(JSON.stringify({
+        selector: selector,
+        tagName: info.tagName,
+        type: info.type,
+        name: info.name,
+        value: info.value,
+        purpose: info.purpose,
+        form_selector: formSelector,
+        submit_selector: submitSelector,
+      }));
     }
   }
 

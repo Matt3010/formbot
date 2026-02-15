@@ -1,10 +1,10 @@
-Quando avvio una nuova analisi e immediatamente dopo allo step 2 ritorno indietro e poi ritento una analisi, si crea un'altra
-istanza di VNC, quando clicco sui campi, probabilmente vengono selezionati quelli del vnc originale, e non quelli del nuovo vnc.
+~~Quando avvio una nuova analisi e immediatamente dopo allo step 2 ritorno indietro e poi ritento una analisi, si crea un'altra
+istanza di VNC, quando clicco sui campi, probabilmente vengono selezionati quelli del vnc originale, e non quelli del nuovo vnc.~~
 
-Prevenire di selezionare con il tool Add field, se presente uno stesso campo in fase VNC.
+~~Prevenire di selezionare con il tool Add field, se presente uno stesso campo in fase VNC.~~
 
-Auto selezione dello strumento Add field quando si clicca su un campo non già selezionato e auto selezione dello strumento Select mode
-quando si clicca su un campo già selezionato, in modo da evitare di dover selezionare manualmente lo strumento ogni volta.
+~~Auto selezione dello strumento Add field quando si clicca su un campo non già selezionato e auto selezione dello strumento Select mode
+quando si clicca su un campo già selezionato, in modo da evitare di dover selezionare manualmente lo strumento ogni volta.~~
 
 Sistemare la UI per la gestione degli strumenti che appare verticale. Il layout si estende orizzontalmente.
 

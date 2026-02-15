@@ -67,8 +67,8 @@ export class VncModeToolbarComponent {
   modeChanged = output<EditorMode>();
 
   buttons: { value: EditorMode; icon: string; tooltip: string }[] = [
-    { value: 'select', icon: 'touch_app', tooltip: 'Select mode' },
-    { value: 'add', icon: 'add_circle', tooltip: 'Add field' },
-    { value: 'remove', icon: 'remove_circle', tooltip: 'Remove field' },
+    { value: 'select', icon: 'touch_app', tooltip: 'Select/Add mode (auto-detects existing fields)' },
+    { value: 'add', icon: 'add_circle', tooltip: 'Select/Add mode (auto-detects existing fields)' },
+    { value: 'remove', icon: 'remove_circle', tooltip: 'Remove field mode' },
   ];
 }
