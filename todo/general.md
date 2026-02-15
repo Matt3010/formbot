@@ -84,8 +84,7 @@ agli utenti di intervenire in momenti specifici del flusso di lavoro.
 I test attualmente girano su sqlite, sarebbe bello usare pgsql cosi non è necessario fare una implementazione ad hoc 
 per sqlite.
 
-!!!!!Differenza tra analysis e tasks? mi serve questa differenza? Se no sarebbe meglio unificare i concetti e cancellare le colonne
-che non mi servono piu. se servono comunque cancellare colonne che non mi servono piu.
+!!!!!Differenza tra analysis e tasks? mi serve questa differenza?
 Possiamo anche pensare di togliere le analysis da tutta l'infrastruttura e lasciare solo le tasks (se si cancella una task si perde la sessione e si ricomincia da capo), 
 in modo da semplificare il modello dati e la gestione delle analisi.
 -> (Controlla se questa cosa serve ancora se cancello le analisi e lascio solo le tasks)
