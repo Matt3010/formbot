@@ -165,7 +165,7 @@ class TaskExecutor:
     async def execute(self, task_id: str, execution_id: str = None,
                       is_dry_run: bool = False,
                       stealth_enabled: bool = True, user_agent: str = None,
-                      action_delay_ms: int = 500) -> dict:
+                      action_delay_ms: int = 0) -> dict:
         """Execute a complete task flow."""
 
         task = self.db.query(Task).filter(Task.id == task_id).first()
@@ -246,8 +246,8 @@ class TaskExecutor:
 
                 context = await browser.new_context(**context_options)
 
-                if stealth_enabled:
-                    await apply_stealth(context)
+                # Always apply stealth to mask automation markers
+                await apply_stealth(context)
 
                 page = await context.new_page()
 

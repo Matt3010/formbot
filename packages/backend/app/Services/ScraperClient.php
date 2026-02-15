@@ -25,9 +25,9 @@ class ScraperClient
         $payload = [
             'task_id' => $taskId,
             'is_dry_run' => $isDryRun,
-            'stealth_enabled' => $options['stealth_enabled'] ?? true,
+            'stealth_enabled' => true,  // Always enabled
             'user_agent' => $options['custom_user_agent'] ?? null,
-            'action_delay_ms' => $options['action_delay_ms'] ?? 500,
+            'action_delay_ms' => 0,  // No artificial delay, Playwright handles waits
         ];
 
         if ($executionId) {

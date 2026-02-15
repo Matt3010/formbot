@@ -14,8 +14,6 @@ import { NotificationService } from '../../core/services/notification.service';
 interface Settings {
   max_parallel_browsers: number;
   retention_days: number;
-  default_action_delay_ms: number;
-  default_stealth_enabled: boolean;
   default_max_retries: number;
 }
 
@@ -55,13 +53,6 @@ interface Settings {
                 <label>Max Parallel Browsers: {{ settings.max_parallel_browsers }}</label>
                 <mat-slider min="1" max="10" step="1" showTickMarks>
                   <input matSliderThumb [(ngModel)]="settings.max_parallel_browsers">
-                </mat-slider>
-              </div>
-
-              <div class="slider-field mt-2">
-                <label>Default Action Delay: {{ settings.default_action_delay_ms }}ms</label>
-                <mat-slider min="0" max="5000" step="100" showTickMarks>
-                  <input matSliderThumb [(ngModel)]="settings.default_action_delay_ms">
                 </mat-slider>
               </div>
 
@@ -122,8 +113,6 @@ export class SettingsComponent implements OnInit {
   settings: Settings = {
     max_parallel_browsers: 2,
     retention_days: 30,
-    default_action_delay_ms: 500,
-    default_stealth_enabled: true,
     default_max_retries: 3,
   };
 

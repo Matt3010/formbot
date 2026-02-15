@@ -10,9 +10,7 @@ export interface Task {
   is_dry_run: boolean;
   max_retries: number;
   max_parallel: number;
-  stealth_enabled: boolean;
   custom_user_agent: string | null;
-  action_delay_ms: number;
   cloned_from: string | null;
   requires_login: boolean;
   login_url: string | null;
@@ -68,8 +66,6 @@ export interface TaskPayload {
   schedule_cron: string | null;
   schedule_at: string | null;
   is_dry_run: boolean;
-  stealth_enabled: boolean;
-  action_delay_ms: number;
   custom_user_agent: string | null;
   max_retries: number;
   max_parallel: number;

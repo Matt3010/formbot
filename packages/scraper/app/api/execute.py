@@ -21,7 +21,7 @@ class ExecuteRequest(BaseModel):
     is_dry_run: bool = False
     stealth_enabled: bool = True
     user_agent: Optional[str] = None
-    action_delay_ms: int = 500
+    action_delay_ms: int = 0  # No artificial delay
 
 
 async def _run_execution(request: ExecuteRequest):

@@ -196,8 +196,6 @@ export class TaskWizardComponent implements OnInit, OnDestroy {
   scheduleData = signal<ScheduleData>({ schedule_type: 'once', schedule_cron: null, schedule_at: null });
   taskOptions = signal<TaskOptions>({
     is_dry_run: false,
-    stealth_enabled: true,
-    action_delay_ms: 500,
     custom_user_agent: null,
     max_retries: 3,
     max_parallel: 1,
@@ -372,8 +370,6 @@ export class TaskWizardComponent implements OnInit, OnDestroy {
         });
         this.taskOptions.set({
           is_dry_run: task.is_dry_run,
-          stealth_enabled: task.stealth_enabled,
-          action_delay_ms: task.action_delay_ms,
           custom_user_agent: task.custom_user_agent,
           max_retries: task.max_retries,
           max_parallel: task.max_parallel,
@@ -597,8 +593,6 @@ export class TaskWizardComponent implements OnInit, OnDestroy {
       schedule_cron: schedule.schedule_cron,
       schedule_at: schedule.schedule_at,
       is_dry_run: options.is_dry_run,
-      stealth_enabled: options.stealth_enabled,
-      action_delay_ms: options.action_delay_ms,
       custom_user_agent: options.custom_user_agent,
       max_retries: options.max_retries,
       max_parallel: options.max_parallel,

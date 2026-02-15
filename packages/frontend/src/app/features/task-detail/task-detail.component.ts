@@ -121,14 +121,6 @@ import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog.c
                 </span>
               </div>
               <div class="info-item">
-                <span class="info-label">Stealth Mode</span>
-                <span class="info-value">{{ task()!.stealth_enabled ? 'Enabled' : 'Disabled' }}</span>
-              </div>
-              <div class="info-item">
-                <span class="info-label">Action Delay</span>
-                <span class="info-value">{{ task()!.action_delay_ms }}ms</span>
-              </div>
-              <div class="info-item">
                 <span class="info-label">Max Retries</span>
                 <span class="info-value">{{ task()!.max_retries }}</span>
               </div>

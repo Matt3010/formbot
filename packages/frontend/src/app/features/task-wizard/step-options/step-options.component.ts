@@ -9,8 +9,6 @@ import { MatIconModule } from '@angular/material/icon';
 
 export interface TaskOptions {
   is_dry_run: boolean;
-  stealth_enabled: boolean;
-  action_delay_ms: number;
   custom_user_agent: string | null;
   max_retries: number;
   max_parallel: number;
@@ -44,33 +42,6 @@ export interface TaskOptions {
             <mat-slide-toggle [(ngModel)]="options.is_dry_run" (ngModelChange)="onOptionsChange()">
               {{ options.is_dry_run ? 'Enabled' : 'Disabled' }}
             </mat-slide-toggle>
-          </mat-card-content>
-        </mat-card>
-
-        <mat-card class="option-card">
-          <mat-card-header>
-            <mat-icon matCardAvatar>visibility_off</mat-icon>
-            <mat-card-title>Stealth Mode</mat-card-title>
-            <mat-card-subtitle>Anti-detection measures</mat-card-subtitle>
-          </mat-card-header>
-          <mat-card-content>
-            <mat-slide-toggle [(ngModel)]="options.stealth_enabled" (ngModelChange)="onOptionsChange()">
-              {{ options.stealth_enabled ? 'Enabled' : 'Disabled' }}
-            </mat-slide-toggle>
-          </mat-card-content>
-        </mat-card>
-
-        <mat-card class="option-card">
-          <mat-card-header>
-            <mat-icon matCardAvatar>timer</mat-icon>
-            <mat-card-title>Action Delay</mat-card-title>
-            <mat-card-subtitle>Delay between actions (ms)</mat-card-subtitle>
-          </mat-card-header>
-          <mat-card-content>
-            <mat-slider min="0" max="5000" step="100" showTickMarks>
-              <input matSliderThumb [(ngModel)]="options.action_delay_ms" (ngModelChange)="onOptionsChange()">
-            </mat-slider>
-            <span class="slider-value">{{ options.action_delay_ms }}ms</span>
           </mat-card-content>
         </mat-card>
 
@@ -135,8 +106,6 @@ export class StepOptionsComponent {
 
   options: TaskOptions = {
     is_dry_run: false,
-    stealth_enabled: true,
-    action_delay_ms: 500,
     custom_user_agent: null,
     max_retries: 3,
     max_parallel: 1,

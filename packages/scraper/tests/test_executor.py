@@ -597,53 +597,6 @@ async def test_execute_stealth_mode(mock_db, mock_vnc_manager):
 
 
 @pytest.mark.asyncio
-async def test_execute_stealth_disabled(mock_db, mock_vnc_manager):
-    """Stealth is NOT applied when stealth_enabled=False."""
-    task_id = uuid.uuid4()
-    fd_id = uuid.uuid4()
-
-    task = make_task(id=task_id)
-    form_def = make_form_definition(
-        id=fd_id, task_id=task_id, step_order=1,
-        page_url="https://example.com/form",
-        form_selector="#form", submit_selector="#submit",
-        human_breakpoint=False,
-    )
-
-    _setup_db_for_task(mock_db, task, [form_def], {fd_id: []})
-
-    page = _make_mock_page()
-    browser = _make_mock_browser(_make_mock_context(page))
-    stealth_mock = AsyncMock()
-    context = _make_mock_context(page)
-    browser.new_context = AsyncMock(return_value=context)
-    pw_cm = _make_mock_playwright(browser)
-
-    pw_patch = patch(
-        "app.services.task_executor.async_playwright",
-        return_value=pw_cm,
-    )
-    stealth_patch = patch(
-        "app.services.task_executor.apply_stealth",
-        stealth_mock,
-    )
-    screenshot_storage_mock = MagicMock()
-    screenshot_storage_mock.upload_screenshot = MagicMock(return_value=("test-key", 12345))
-    screenshot_patch = patch(
-        "app.services.task_executor.ScreenshotStorage.get_instance",
-        return_value=screenshot_storage_mock,
-    )
-
-    with pw_patch, stealth_patch, screenshot_patch:
-        from app.services.task_executor import TaskExecutor
-
-        executor = TaskExecutor(db=mock_db, vnc_manager=mock_vnc_manager)
-        await executor.execute(str(task_id), stealth_enabled=False)
-
-    stealth_mock.assert_not_awaited()
-
-
-@pytest.mark.asyncio
 async def test_execute_field_filling_select(mock_db, mock_vnc_manager):
     """Select fields use page.select_option."""
     task_id = uuid.uuid4()

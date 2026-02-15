@@ -23,10 +23,10 @@ Unire in un unico step 4 e 5, "Options".
 
 Controllare cosa fa Dry Run. Il form non inviato è quello della login? o quello "finale"?
 
-La stealth mode mi serve veramente o dato che uso un client browser vero e proprio i sistemi terzi 
+~~La stealth mode mi serve veramente o dato che uso un client browser vero e proprio i sistemi terzi 
 (provider di siti come Apple, Google, etc) non riescono a capire che è un browser reale? 
 Se è così, forse è meglio rimuovere questa funzionalità per semplificare l'interfaccia.
-Stessa cosa per Action Delay, se non è necessario, meglio rimuoverlo per semplificare l'interfaccia.
+Stessa cosa per Action Delay, se non è necessario, meglio rimuoverlo per semplificare l'interfaccia.~~
 
 Capire cosa è Max Parallel Option e se per una analisi è necessario specificarlo o se di default può essere sempre impostata 
 a 1. (Lasciare comunque i controlli sul be se effettivamente è un setting utile per una analisi).
