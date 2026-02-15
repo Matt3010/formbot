@@ -84,12 +84,12 @@ agli utenti di intervenire in momenti specifici del flusso di lavoro.
 I test attualmente girano su sqlite, sarebbe bello usare pgsql cosi non è necessario fare una implementazione ad hoc 
 per sqlite.
 
-!!!!!Differenza tra analysis e tasks? mi serve questa differenza?
+~~!!!!!Differenza tra analysis e tasks? mi serve questa differenza?
 Possiamo anche pensare di togliere le analysis da tutta l'infrastruttura e lasciare solo le tasks (se si cancella una task si perde la sessione e si ricomincia da capo), 
 in modo da semplificare il modello dati e la gestione delle analisi.
 -> (Controlla se questa cosa serve ancora se cancello le analisi e lascio solo le tasks)
 La modifica di un vnc dovrebbe ricompilare i fields che possiede (se ancora validi). Quelli non validi invece dovrebbero essere nella UI
-evidenziati di un colore ad hoc ed eventualmente cancellati.
+evidenziati di un colore ad hoc ed eventualmente cancellati.~~
 
 Quando clicco con un tool su un campo nel VNC, tutto il contenuto si espande e zooma un po. 
 Per di piu la view è leggermente tagliata a destra.

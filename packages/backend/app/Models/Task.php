@@ -26,7 +26,7 @@ class Task extends Model
      * The model's default values for attributes.
      */
     protected $attributes = [
-        'status' => 'editing',
+        'status' => 'draft',
         'editing_status' => 'idle',
         'editing_step' => 0,
         'requires_login' => false,

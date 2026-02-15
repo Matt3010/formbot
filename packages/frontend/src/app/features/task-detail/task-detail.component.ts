@@ -55,7 +55,7 @@ import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog.c
 
           <div class="task-actions">
             <button mat-raised-button color="primary" (click)="execute()" matTooltip="Execute now"
-              [disabled]="task()!.status === 'draft'">
+              [disabled]="task()!.status !== 'active' && task()!.status !== 'paused'">
               <mat-icon>play_arrow</mat-icon> Execute
             </button>
             <button mat-stroked-button (click)="dryRun()" matTooltip="Dry run (no submit)">
@@ -206,7 +206,8 @@ import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog.c
     .no-data { text-align: center; color: #999; padding: 32px; }
     .execution-progress-card { border-left: 4px solid #2196f3; }
     .progress-text { font-size: 14px; color: #2196f3; }
-    .status-draft { background-color: #9e9e9e !important; color: white !important; }
+    .status-editing { background-color: #9c27b0 !important; color: white !important; }
+    .status-draft { background-color: #607d8b !important; color: white !important; }
     .status-active { background-color: #4caf50 !important; color: white !important; }
     .status-paused { background-color: #ff9800 !important; color: white !important; }
     .status-completed { background-color: #2196f3 !important; color: white !important; }

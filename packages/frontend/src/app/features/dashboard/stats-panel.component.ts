@@ -24,6 +24,30 @@ import { Task } from '../../core/models/task.model';
       <mat-card class="stat-card">
         <mat-card-content>
           <div class="stat-row">
+            <mat-icon class="stat-icon editing">edit</mat-icon>
+            <div>
+              <div class="stat-value">{{ editingCount() }}</div>
+              <div class="stat-label">Editing</div>
+            </div>
+          </div>
+        </mat-card-content>
+      </mat-card>
+
+      <mat-card class="stat-card">
+        <mat-card-content>
+          <div class="stat-row">
+            <mat-icon class="stat-icon draft">draft</mat-icon>
+            <div>
+              <div class="stat-value">{{ draftCount() }}</div>
+              <div class="stat-label">Draft</div>
+            </div>
+          </div>
+        </mat-card-content>
+      </mat-card>
+
+      <mat-card class="stat-card">
+        <mat-card-content>
+          <div class="stat-row">
             <mat-icon class="stat-icon active">play_circle</mat-icon>
             <div>
               <div class="stat-value">{{ activeCount() }}</div>
@@ -69,6 +93,8 @@ import { Task } from '../../core/models/task.model';
     .stat-row { display: flex; align-items: center; gap: 16px; padding: 8px; }
     .stat-icon { font-size: 40px; width: 40px; height: 40px; }
     .stat-icon.total { color: #3f51b5; }
+    .stat-icon.editing { color: #9c27b0; }
+    .stat-icon.draft { color: #607d8b; }
     .stat-icon.active { color: #4caf50; }
     .stat-icon.paused { color: #ff9800; }
     .stat-icon.failed { color: #f44336; }
@@ -80,6 +106,8 @@ export class StatsPanelComponent {
   tasks = input<Task[]>([]);
 
   totalCount = computed(() => this.tasks().length);
+  editingCount = computed(() => this.tasks().filter(t => t.status === 'editing').length);
+  draftCount = computed(() => this.tasks().filter(t => t.status === 'draft').length);
   activeCount = computed(() => this.tasks().filter(t => t.status === 'active').length);
   pausedCount = computed(() => this.tasks().filter(t => t.status === 'paused').length);
   failedCount = computed(() => this.tasks().filter(t => t.status === 'failed').length);

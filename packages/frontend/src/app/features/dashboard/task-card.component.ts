@@ -77,7 +77,7 @@ import { Task } from '../../core/models/task.model';
             <mat-icon>pause</mat-icon>
           </button>
         } @else {
-          <button mat-icon-button matTooltip="Execute" (click)="execute.emit()" [disabled]="task().status === 'draft' || task().status === 'running'">
+          <button mat-icon-button matTooltip="Execute" (click)="execute.emit()" [disabled]="task().status !== 'active' && task().status !== 'paused'">
             <mat-icon>play_arrow</mat-icon>
           </button>
         }
@@ -121,7 +121,8 @@ import { Task } from '../../core/models/task.model';
       0%, 100% { opacity: 1; }
       50% { opacity: 0.6; }
     }
-    .status-draft { background-color: #9e9e9e !important; color: white !important; }
+    .status-editing { background-color: #9c27b0 !important; color: white !important; }
+    .status-draft { background-color: #607d8b !important; color: white !important; }
     .status-active { background-color: #4caf50 !important; color: white !important; }
     .status-paused { background-color: #ff9800 !important; color: white !important; }
     .status-completed { background-color: #2196f3 !important; color: white !important; }
