@@ -113,4 +113,4 @@ l' highlight del campo è traslato rispetto l' elemento.
 <HostId>dd9025bab4ad464b049177c95eb6ebf374d3b3fd1af9251148b658df7ac2e3e8</HostId>
 </Error>
 
-Cosa vuol dire filesystem legacy nelle stats su sezione screenshot?
+Cosa vuol dire filesystem legacy nelle stats su sezione screenshot? Se non serve toglierlo.
