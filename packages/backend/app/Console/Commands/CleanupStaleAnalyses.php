@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Analysis;
+use App\Services\ScraperClient;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
@@ -32,14 +33,32 @@ class CleanupStaleAnalyses extends Command
         }
 
         // Cleanup expired editing sessions
-        $editingCount = Analysis::where('editing_status', 'active')
+        $expiredAnalyses = Analysis::where('editing_status', 'active')
             ->where('editing_expires_at', '<', now())
-            ->update([
-                'editing_status' => 'cancelled',
-                'status' => 'completed',
-            ]);
+            ->get();
 
-        if ($editingCount > 0) {
+        if ($expiredAnalyses->isNotEmpty()) {
+            $scraperClient = app(ScraperClient::class);
+
+            // Stop VNC sessions on scraper first
+            foreach ($expiredAnalyses as $analysis) {
+                try {
+                    $scraperClient->stopEditingSession($analysis->id);
+                } catch (\Exception $e) {
+                    Log::warning('Failed to stop expired editing session on scraper', [
+                        'analysis_id' => $analysis->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+
+            // Update database
+            $editingCount = Analysis::whereIn('id', $expiredAnalyses->pluck('id'))
+                ->update([
+                    'editing_status' => 'cancelled',
+                    'status' => 'completed',
+                ]);
+
             $this->info("Cancelled {$editingCount} expired editing session(s).");
             Log::info('CleanupStaleAnalyses: expired editing sessions', ['count' => $editingCount]);
         }

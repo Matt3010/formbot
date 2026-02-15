@@ -76,3 +76,6 @@ tests/test_executor.py::test_no_duplicate_step_in_steps_log_after_captcha FAILED
 tests/test_executor.py::test_vnc_cleanup_on_execution_exception FAILED   [ 80%]
 tests/test_executor.py::test_vnc_cleanup_on_timeout_failure FAILED
 forse è dovuto dall'implementazione di MINIO e gli screenshots?~~
+
+Ogni sessione dura 30 minuti, inserire un timer di countdown per mostrare all'utente quanto tempo 
+rimane prima che la sessione scada, in modo da evitare perdite di dati o interruzioni improvvise durante l'analisi.

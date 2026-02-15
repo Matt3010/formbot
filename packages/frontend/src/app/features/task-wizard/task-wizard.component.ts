@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal, ViewChild } from '@angular/core';
+import { Component, inject, OnInit, OnDestroy, signal, ViewChild } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { MatStepperModule, MatStepper } from '@angular/material/stepper';
@@ -158,7 +158,7 @@ import { WorkflowGraphComponent } from './workflow-graph/workflow-graph.componen
     .step-actions { display: flex; gap: 12px; align-items: center; }
   `]
 })
-export class TaskWizardComponent implements OnInit {
+export class TaskWizardComponent implements OnInit, OnDestroy {
   @ViewChild(StepUrlComponent) stepUrl!: StepUrlComponent;
   @ViewChild(StepScheduleComponent) stepSchedule!: StepScheduleComponent;
   @ViewChild(StepOptionsComponent) stepOptions!: StepOptionsComponent;
@@ -232,6 +232,11 @@ export class TaskWizardComponent implements OnInit {
         });
       }
     }
+  }
+
+  ngOnDestroy() {
+    // Cleanup VNC session when component is destroyed (navigation away, browser close, etc.)
+    this.cleanupVncSession();
   }
 
   private resumeVncEditing(analysisId: string, pending: Analysis | null) {

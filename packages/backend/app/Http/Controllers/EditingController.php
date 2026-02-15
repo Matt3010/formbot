@@ -223,6 +223,7 @@ class EditingController extends Controller
 
         // Update analysis
         $analysis->update([
+            'status' => 'completed',
             'editing_status' => 'confirmed',
             'task_id' => $task->id,
             'user_corrections' => $corrections,
