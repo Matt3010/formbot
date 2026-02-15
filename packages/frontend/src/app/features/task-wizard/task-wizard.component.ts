@@ -337,19 +337,16 @@ export class TaskWizardComponent implements OnInit, OnDestroy {
     this.vncTaskId.set(taskId);
     this.vncAnalysisResult.set(null);
 
-    // Determine the URL to start editing with
-    let editUrl = this.stepUrl.urlControl.value;
+    // Set target URL for login flow
     if (this.requiresLogin()) {
-      const loginUrl = this.stepUrl.loginUrlControl.value;
       const targetUrl = this.stepUrl.urlControl.value;
       this.vncTargetUrl.set(targetUrl || null);
-      editUrl = loginUrl;
     } else {
       this.vncTargetUrl.set(null);
     }
 
     // Start the VNC editing session
-    this.vncEditorService.startEditing(taskId, editUrl).subscribe({
+    this.vncEditorService.startEditing(taskId).subscribe({
       next: () => {
         this.notify.info('Starting visual editor...');
         this.resumingFromTask.set(true);

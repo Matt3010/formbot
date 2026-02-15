@@ -425,7 +425,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
           error: (err) => this.handleSessionError(err)
         });
       } else {
-        this.initializeFromResult(data.analysis_result, data.fields);
+        this.initializeFromResult(data.user_corrections, data.fields);
       }
 
       // Auto-set to 'add' mode on target phase so user can immediately start picking fields

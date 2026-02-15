@@ -19,7 +19,7 @@ return new class extends Migration
             $table->enum('schedule_type', ['once', 'cron'])->default('once');
             $table->string('schedule_cron', 100)->nullable();
             $table->timestamp('schedule_at')->nullable();
-            $table->enum('status', ['draft', 'active', 'paused', 'completed', 'failed'])->default('draft');
+            $table->enum('status', ['editing', 'draft', 'active', 'paused', 'completed', 'failed'])->default('editing');
             $table->boolean('is_dry_run')->default(false);
             $table->integer('max_retries')->default(3);
             $table->integer('max_parallel')->default(1);
