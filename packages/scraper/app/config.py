@@ -7,6 +7,10 @@ class Settings(BaseSettings):
     vnc_enabled: bool = True
     novnc_host: str = "novnc"
     novnc_port: int = 6080
+    # Public URL configuration for VNC access (used in URLs sent to frontend)
+    novnc_public_host: str = "localhost"
+    novnc_public_port: str = "6080"
+    novnc_public_scheme: str = "http"
     max_concurrent_browsers: int = 5
     screenshot_dir: str = "/app/screenshots"
     upload_dir: str = "/app/uploads"

@@ -694,7 +694,7 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
       is_sensitive: false,
       is_required: false,
       is_file_upload: false,
-      options: null,
+      options: data.options || null,
       sort_order: this.currentFields().length,
       original_selector: data.selector,
     };

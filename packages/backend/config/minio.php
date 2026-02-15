@@ -13,6 +13,8 @@ return [
 
     'endpoint' => env('MINIO_ENDPOINT', 'http://minio:9000'),
 
+    'public_url' => env('MINIO_PUBLIC_URL', env('MINIO_ENDPOINT', 'http://minio:9000')),
+
     'access_key' => env('MINIO_ACCESS_KEY', 'formbot'),
 
     'secret_key' => env('MINIO_SECRET_KEY', 'formbot-secret-key'),

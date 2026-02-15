@@ -1,3 +1,11 @@
+# FormBot Docker Compose Configuration
+#
+# For production deployment with public accessibility, see DEPLOYMENT.md
+# Key environment variables for production:
+#   - MINIO_PUBLIC_URL: Public URL for screenshot access (e.g., https://minio.yourdomain.com)
+#   - NOVNC_PUBLIC_HOST/PORT/SCHEME: Public URL components for VNC access
+#   - See .env.example for all configuration options
+
 services:
   # ---- Frontend (Angular) ----
   frontend:
@@ -42,6 +50,7 @@ services:
       - PUSHER_PORT=6001
       - PUSHER_SCHEME=http
       - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_PUBLIC_URL=${MINIO_PUBLIC_URL:-http://localhost:9002}
       - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-formbot}
       - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-formbot-secret-key}
       - MINIO_BUCKET=formbot-screenshots
@@ -90,6 +99,7 @@ services:
       - PUSHER_PORT=6001
       - PUSHER_SCHEME=http
       - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_PUBLIC_URL=${MINIO_PUBLIC_URL:-http://localhost:9002}
       - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-formbot}
       - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-formbot-secret-key}
       - MINIO_BUCKET=formbot-screenshots
@@ -170,6 +180,9 @@ services:
       - DATABASE_URL=postgresql://formbot:${DB_PASSWORD}@db:5432/formbot
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
       - VNC_ENABLED=true
+      - NOVNC_PUBLIC_HOST=${NOVNC_PUBLIC_HOST:-localhost}
+      - NOVNC_PUBLIC_PORT=${NOVNC_PUBLIC_PORT:-6080}
+      - NOVNC_PUBLIC_SCHEME=${NOVNC_PUBLIC_SCHEME:-http}
       - PUSHER_APP_ID=${PUSHER_APP_ID:-100001}
       - PUSHER_APP_KEY=${PUSHER_APP_KEY:-formbot-key}
       - PUSHER_APP_SECRET=${PUSHER_APP_SECRET:-formbot-secret}

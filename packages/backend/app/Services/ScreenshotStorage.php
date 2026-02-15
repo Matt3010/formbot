@@ -11,17 +11,20 @@ class ScreenshotStorage
     private S3Client $client;
     private string $bucket;
     private int $presignedUrlExpiry;
+    private string $internalEndpoint;
+    private string $publicUrl;
 
     public function __construct()
     {
-        $endpoint = config('minio.endpoint');
+        $this->internalEndpoint = config('minio.endpoint');
+        $this->publicUrl = config('minio.public_url');
         $this->bucket = config('minio.bucket');
         $this->presignedUrlExpiry = config('minio.presigned_url_expiry', 15);
 
         $this->client = new S3Client([
             'version' => 'latest',
             'region' => config('minio.region', 'us-east-1'),
-            'endpoint' => $endpoint,
+            'endpoint' => $this->internalEndpoint,
             'use_path_style_endpoint' => config('minio.use_path_style', true),
             'credentials' => [
                 'key' => config('minio.access_key'),
@@ -62,7 +65,14 @@ class ScreenshotStorage
 
             $request = $this->client->createPresignedRequest($cmd, "+{$this->presignedUrlExpiry} minutes");
 
-            return (string) $request->getUri();
+            $presignedUrl = (string) $request->getUri();
+
+            // Replace internal endpoint with public URL if they differ
+            if ($this->publicUrl !== $this->internalEndpoint) {
+                $presignedUrl = str_replace($this->internalEndpoint, $this->publicUrl, $presignedUrl);
+            }
+
+            return $presignedUrl;
         } catch (AwsException $e) {
             Log::error("Failed to generate presigned URL: " . $e->getMessage());
             return null;

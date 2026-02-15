@@ -258,9 +258,16 @@ class VNCManager:
 
         await asyncio.sleep(0.5)  # Wait for x11vnc to be ready
 
-        novnc_host = os.environ.get("NOVNC_PUBLIC_HOST", "localhost")
+        from app.config import settings
+
+        novnc_host = settings.novnc_public_host
+        novnc_port = settings.novnc_public_port
+        novnc_scheme = settings.novnc_public_scheme
+
+        # Construct VNC URL with optional port
+        port_suffix = f":{novnc_port}" if novnc_port else ""
         vnc_url = (
-            f"http://{novnc_host}:{self._WS_PORT}/vnc_embed.html"
+            f"{novnc_scheme}://{novnc_host}{port_suffix}/vnc_embed.html"
             f"?path=websockify/?token={token}&autoconnect=true"
         )
         session["vnc_url"] = vnc_url

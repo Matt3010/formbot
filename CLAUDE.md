@@ -117,6 +117,53 @@ Key models with UUID primary keys:
 | Redis | redis:6379 | localhost:6379 |
 | Test Site | host.docker.internal:3000 | localhost:3000 |
 
+## Deployment
+
+### Production Deployment
+
+For production deployment with public accessibility, SSL/TLS, and proper security configuration, see **[DEPLOYMENT.md](DEPLOYMENT.md)** for comprehensive setup instructions.
+
+### Public URL Configuration
+
+FormBot uses environment variables to configure public-facing URLs for external access:
+
+**MinIO Public URLs** (for screenshot access):
+- `MINIO_ENDPOINT` — Internal Docker endpoint (e.g., `http://minio:9000`)
+- `MINIO_PUBLIC_URL` — Public URL for presigned screenshot URLs (e.g., `https://minio.yourdomain.com` or `http://your-ip:9002`)
+- Defaults to `MINIO_ENDPOINT` if not set (backward compatible)
+
+**VNC Public URLs** (for VNC session access):
+- `NOVNC_PUBLIC_HOST` — Public hostname (e.g., `vnc.yourdomain.com` or `your-ip`)
+- `NOVNC_PUBLIC_PORT` — Public port (e.g., `6080` or empty for default https port)
+- `NOVNC_PUBLIC_SCHEME` — Protocol scheme (`http` or `https`)
+- Defaults to `localhost:6080` with `http` if not set (backward compatible)
+
+**Configuration Examples:**
+
+Development (default):
+```bash
+MINIO_PUBLIC_URL=http://localhost:9002
+NOVNC_PUBLIC_HOST=localhost
+NOVNC_PUBLIC_PORT=6080
+NOVNC_PUBLIC_SCHEME=http
+```
+
+Production with domain:
+```bash
+MINIO_PUBLIC_URL=https://minio.yourdomain.com
+NOVNC_PUBLIC_HOST=vnc.yourdomain.com
+NOVNC_PUBLIC_PORT=  # Empty for default https port 443
+NOVNC_PUBLIC_SCHEME=https
+```
+
+Production with IP:
+```bash
+MINIO_PUBLIC_URL=http://203.0.113.10:9002
+NOVNC_PUBLIC_HOST=203.0.113.10
+NOVNC_PUBLIC_PORT=6080
+NOVNC_PUBLIC_SCHEME=http
+```
+
 ## Test Maintenance Policy
 
 After every impactful change (new feature, bug fix, refactor, API change, model/config change), you MUST:

@@ -34,16 +34,16 @@ a 1. (Lasciare comunque i controlli sul be se effettivamente è un setting utile
 La modifica di un vnc dovrebbe ricompilare i fields che possiede (se ancora validi). Quelli non validi invece dovrebbero essere nella UI 
 evidenziati di un colore ad hoc ed eventualmente cancellati.
 
-Permettere all'utente di poter selezionare un file per gli input di tipo file (abbiamo già l'implementazione MINIO).
-(Se già non possibile).
+~~Permettere all'utente di poter selezionare un file per gli input di tipo file (abbiamo già l'implementazione MINIO).
+(Se già non possibile).~~
 
-Controllare che per tutti i tipi di campi selezionati, la sidebar a destra in fase VNC mostri le opzioni corrette per quel tipo di campo. 
-Ad esempio, se è un campo di testo, mostrare le opzioni per il testo, se è un campo di file, mostrare le opzioni per i file, etc.
+~~Controllare che per tutti i tipi di campi selezionati, la sidebar a destra in fase VNC mostri le opzioni corrette per quel tipo di campo. 
+Ad esempio, se è un campo di testo, mostrare le opzioni per il testo, se è un campo di file, mostrare le opzioni per i file, etc.~~
 
-Sistemare l'url ritornato da MINIO che attualmente punta a http://minio:9000/ invece che al dominio pubblico,
+~~Sistemare l'url ritornato da MINIO che attualmente punta a http://minio:9000/ invece che al dominio pubblico,
 in modo tale che l'utente possa accedere direttamente al file caricato senza dover modificare manualmente l'url.
 Lo stesso problema c'è anche per i vari puntamenti del VNC che non so come funzionano.
-In generale capire come rendere l'infrastruttura deployabile e accessibile da un dominio pubblico.
+In generale capire come rendere l'infrastruttura deployabile e accessibile da un dominio pubblico.~~
 
 Capire quanto è il peso per la macchina di una sessione VNC.
 

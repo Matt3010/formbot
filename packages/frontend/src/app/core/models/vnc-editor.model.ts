@@ -58,6 +58,7 @@ export interface FieldAddedEvent {
   name: string;
   value: string;
   purpose: string;
+  options?: string[];
   form_selector?: string;
   submit_selector?: string;
 }

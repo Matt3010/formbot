@@ -1,4 +1,4 @@
-import { Component, input, output, signal, effect } from '@angular/core';
+import { Component, input, output, signal, effect, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -7,7 +7,9 @@ import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { EditorField, TestSelectorResult } from '../../../core/models/vnc-editor.model';
+import { ApiService } from '../../../core/services/api.service';
 
 @Component({
   selector: 'app-vnc-field-detail',
@@ -21,6 +23,7 @@ import { EditorField, TestSelectorResult } from '../../../core/models/vnc-editor
     MatButtonModule,
     MatIconModule,
     MatTooltipModule,
+    MatProgressSpinnerModule,
   ],
   template: `
     @if (field()) {
@@ -80,13 +83,46 @@ import { EditorField, TestSelectorResult } from '../../../core/models/vnc-editor
           </mat-select>
         </mat-form-field>
 
-        @if (editType !== 'submit' && editType !== 'button') {
-          <mat-form-field appearance="outline" class="full-width">
-            <mat-label>Value</mat-label>
-            <input matInput [(ngModel)]="editValue"
-              [type]="editSensitive ? 'password' : 'text'"
-              (ngModelChange)="emitChange()">
-          </mat-form-field>
+        @if (editType === 'file') {
+          <div class="file-upload-section">
+            <div class="file-upload-header">
+              <mat-label>Upload File</mat-label>
+            </div>
+            <input type="file" #fileInput (change)="onFileSelected($event)" [disabled]="uploadingFile()" class="file-input">
+            @if (uploadingFile()) {
+              <div class="upload-progress">
+                <mat-spinner diameter="20"></mat-spinner>
+                <span>Uploading...</span>
+              </div>
+            }
+            @if (uploadedFileName()) {
+              <div class="uploaded-file">
+                <mat-icon>attach_file</mat-icon>
+                <span>{{ uploadedFileName() }}</span>
+                <button mat-icon-button (click)="clearFile()" matTooltip="Clear file" class="clear-btn">
+                  <mat-icon>close</mat-icon>
+                </button>
+              </div>
+            }
+          </div>
+        } @else if (editType !== 'submit' && editType !== 'button') {
+          @if (field()?.options && field()!.options!.length > 0) {
+            <mat-form-field appearance="outline" class="full-width">
+              <mat-label>Value (Available Options)</mat-label>
+              <mat-select [(ngModel)]="editValue" (ngModelChange)="emitChange()">
+                @for (option of field()!.options; track option) {
+                  <mat-option [value]="option">{{ option }}</mat-option>
+                }
+              </mat-select>
+            </mat-form-field>
+          } @else {
+            <mat-form-field appearance="outline" class="full-width">
+              <mat-label>Value</mat-label>
+              <input matInput [(ngModel)]="editValue"
+                [type]="editSensitive ? 'password' : 'text'"
+                (ngModelChange)="emitChange()">
+            </mat-form-field>
+          }
 
           <mat-checkbox [(ngModel)]="editSensitive" (ngModelChange)="emitChange()">
             Sensitive (encrypted at rest)
@@ -163,9 +199,77 @@ import { EditorField, TestSelectorResult } from '../../../core/models/vnc-editor
     }
     .ml-2 { margin-left: 16px; }
     mat-checkbox { font-size: 13px; }
+    .file-upload-section {
+      padding: 12px;
+      border: 1px dashed #ccc;
+      border-radius: 4px;
+      background: #fafafa;
+      margin-bottom: 8px;
+    }
+    .file-upload-header {
+      margin-bottom: 8px;
+      font-weight: 500;
+      color: rgba(0, 0, 0, 0.6);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .file-input {
+      width: 100%;
+      padding: 8px;
+      margin-bottom: 8px;
+      cursor: pointer;
+    }
+    .file-input:disabled {
+      cursor: not-allowed;
+      opacity: 0.5;
+    }
+    .upload-progress {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px;
+      background: #e3f2fd;
+      border-radius: 4px;
+      font-size: 13px;
+      color: #1976d2;
+    }
+    .uploaded-file {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background: #e8f5e9;
+      border-radius: 4px;
+      font-size: 13px;
+      color: #2e7d32;
+    }
+    .uploaded-file mat-icon {
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+    }
+    .uploaded-file span {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .clear-btn {
+      width: 24px;
+      height: 24px;
+      line-height: 24px;
+    }
+    .clear-btn mat-icon {
+      font-size: 16px;
+      width: 16px;
+      height: 16px;
+    }
   `]
 })
 export class VncFieldDetailComponent {
+  private apiService = inject(ApiService);
+
   field = input<EditorField | null>(null);
   fieldIndex = input<number>(-1);
 
@@ -174,6 +278,8 @@ export class VncFieldDetailComponent {
 
   testResult = signal<TestSelectorResult | null>(null);
   validationErrors = signal<string[]>([]);
+  uploadingFile = signal(false);
+  uploadedFileName = signal<string | null>(null);
 
   editName = '';
   editSelector = '';
@@ -193,6 +299,14 @@ export class VncFieldDetailComponent {
         this.editSensitive = f.is_sensitive;
         this.editRequired = f.is_required;
         this.testResult.set(null);
+
+        // If value is a file path, extract filename for display
+        if (f.field_type === 'file' && f.preset_value) {
+          const filename = f.preset_value.split('/').pop() || f.preset_value;
+          this.uploadedFileName.set(filename);
+        } else {
+          this.uploadedFileName.set(null);
+        }
       }
     });
   }
@@ -241,5 +355,36 @@ export class VncFieldDetailComponent {
 
   setTestResult(result: TestSelectorResult) {
     this.testResult.set(result);
+  }
+
+  onFileSelected(event: Event) {
+    const input = event.target as HTMLInputElement;
+    if (!input.files?.length) return;
+
+    this.uploadingFile.set(true);
+    const file = input.files[0];
+    const formData = new FormData();
+    formData.append('file', file);
+
+    this.apiService.post<{path: string, filename: string}>('/files/upload', formData)
+      .subscribe({
+        next: (response) => {
+          this.uploadedFileName.set(response.filename);
+          this.editValue = response.path;
+          this.uploadingFile.set(false);
+          this.emitChange();
+        },
+        error: (err) => {
+          alert('File upload failed: ' + (err.error?.message || 'Unknown error'));
+          this.uploadingFile.set(false);
+          input.value = ''; // Reset input
+        }
+      });
+  }
+
+  clearFile() {
+    this.editValue = '';
+    this.uploadedFileName.set(null);
+    this.emitChange();
   }
 }

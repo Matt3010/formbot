@@ -234,6 +234,24 @@
     else if (/phone|tel|mobile/i.test(lowerName)) purpose = 'phone';
     else if (/search|query|q\b/i.test(lowerName)) purpose = 'search_query';
 
+    // Detect available options for select, radio, and checkbox fields
+    var options = null;
+
+    if (tag === 'select') {
+      // Extract all option values/texts from select element
+      options = Array.from(el.options).map(function(opt) {
+        return opt.value || opt.text;
+      });
+    } else if (type === 'radio' || type === 'checkbox') {
+      // Find all radio/checkbox inputs with the same name
+      var form = el.closest('form');
+      var selector = 'input[name="' + el.name + '"][type="' + type + '"]';
+      var siblings = form ? form.querySelectorAll(selector) : document.querySelectorAll(selector);
+      options = Array.from(siblings).map(function(input) {
+        return input.value || input.id;
+      }).filter(function(v) { return v; });
+    }
+
     return {
       tagName: tag,
       type: type,
@@ -241,6 +259,7 @@
       value: value,
       purpose: purpose,
       placeholder: placeholder,
+      options: options,
     };
   }
 
