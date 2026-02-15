@@ -83,3 +83,6 @@ rimane prima che la sessione scada, in modo da evitare perdite di dati o interru
 Dividere lo human breakpoint in Pre submit e Post submit, 
 in modo da avere un controllo più granulare sui processi di analisi e permettere
 agli utenti di intervenire in momenti specifici del flusso di lavoro.
+
+I test attualmente girano su sqlite, sarebbe bello usare pgsql cosi non è necessario fare una implementazione ad hoc 
+per sqlite.

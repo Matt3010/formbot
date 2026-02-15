@@ -12,38 +12,40 @@ return new class extends Migration
      */
     public function up(): void
     {
-        // PostgreSQL requires recreating the enum type to remove values
-        // First, add a temporary column with the new enum
-        DB::statement("
-            CREATE TYPE execution_status_new AS ENUM (
-                'queued',
-                'running',
-                'waiting_manual',
-                'success',
-                'failed',
-                'dry_run_ok'
-            )
-        ");
-
         // Migrate any existing captcha_blocked or 2fa_required statuses to 'failed'
-        DB::statement("
-            UPDATE execution_logs
-            SET status = 'failed'
-            WHERE status IN ('captcha_blocked', '2fa_required')
-        ");
+        DB::table('execution_logs')
+            ->whereIn('status', ['captcha_blocked', '2fa_required'])
+            ->update(['status' => 'failed']);
 
-        // Alter the column to use the new enum type
-        DB::statement("
-            ALTER TABLE execution_logs
-            ALTER COLUMN status TYPE execution_status_new
-            USING status::text::execution_status_new
-        ");
+        // PostgreSQL requires recreating the enum type to remove values
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            // First, create a new enum type with the updated values
+            DB::statement("
+                CREATE TYPE execution_status_new AS ENUM (
+                    'queued',
+                    'running',
+                    'waiting_manual',
+                    'success',
+                    'failed',
+                    'dry_run_ok'
+                )
+            ");
 
-        // Drop the old enum type
-        DB::statement("DROP TYPE execution_status");
+            // Alter the column to use the new enum type
+            DB::statement("
+                ALTER TABLE execution_logs
+                ALTER COLUMN status TYPE execution_status_new
+                USING status::text::execution_status_new
+            ");
 
-        // Rename the new enum type to the original name
-        DB::statement("ALTER TYPE execution_status_new RENAME TO execution_status");
+            // Drop the old enum type
+            DB::statement("DROP TYPE execution_status");
+
+            // Rename the new enum type to the original name
+            DB::statement("ALTER TYPE execution_status_new RENAME TO execution_status");
+        }
+        // For SQLite and other databases, no schema change is needed
+        // The enum is just a check constraint that already allows the remaining values
     }
 
     /**
@@ -51,27 +53,31 @@ return new class extends Migration
      */
     public function down(): void
     {
-        // Recreate the enum with the old values
-        DB::statement("
-            CREATE TYPE execution_status_new AS ENUM (
-                'queued',
-                'running',
-                'waiting_manual',
-                'success',
-                'failed',
-                'captcha_blocked',
-                '2fa_required',
-                'dry_run_ok'
-            )
-        ");
+        // PostgreSQL: recreate the enum with the old values
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::statement("
+                CREATE TYPE execution_status_new AS ENUM (
+                    'queued',
+                    'running',
+                    'waiting_manual',
+                    'success',
+                    'failed',
+                    'captcha_blocked',
+                    '2fa_required',
+                    'dry_run_ok'
+                )
+            ");
 
-        DB::statement("
-            ALTER TABLE execution_logs
-            ALTER COLUMN status TYPE execution_status_new
-            USING status::text::execution_status_new
-        ");
+            DB::statement("
+                ALTER TABLE execution_logs
+                ALTER COLUMN status TYPE execution_status_new
+                USING status::text::execution_status_new
+            ");
 
-        DB::statement("DROP TYPE execution_status");
-        DB::statement("ALTER TYPE execution_status_new RENAME TO execution_status");
+            DB::statement("DROP TYPE execution_status");
+            DB::statement("ALTER TYPE execution_status_new RENAME TO execution_status");
+        }
+        // For SQLite and other databases, no schema change is needed
+        // Note: migrated data (captcha_blocked -> failed) is NOT reversed
     }
 };
