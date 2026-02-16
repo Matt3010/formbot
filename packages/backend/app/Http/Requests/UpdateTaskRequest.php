@@ -40,7 +40,7 @@ class UpdateTaskRequest extends FormRequest
             'form_definitions' => ['sometimes', 'array'],
             'form_definitions.*.step_order' => ['required_with:form_definitions', 'integer'],
             'form_definitions.*.depends_on_step_order' => ['nullable', 'integer'],
-            'form_definitions.*.page_url' => ['required_with:form_definitions', 'string'],
+            'form_definitions.*.page_url' => ['nullable', 'string'],
             'form_definitions.*.form_type' => ['required_with:form_definitions', 'in:login,intermediate,target'],
             'form_definitions.*.form_selector' => ['nullable', 'string'],
             'form_definitions.*.submit_selector' => ['nullable', 'string'],

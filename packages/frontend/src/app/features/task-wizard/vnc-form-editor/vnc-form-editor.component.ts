@@ -424,8 +424,15 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
         this.editorService.updateFields(this.taskId(), activeFields).subscribe({
           error: (err) => this.handleSessionError(err)
         });
+      } else if (data.user_corrections?.steps?.length) {
+        // Task-based flow now sends user_corrections (steps), not analysis_result (forms).
+        this.initializeFromDraft(data.user_corrections);
+        const activeFields = data.user_corrections.steps[0]?.fields || [];
+        this.editorService.updateFields(this.taskId(), activeFields).subscribe({
+          error: (err) => this.handleSessionError(err)
+        });
       } else {
-        this.initializeFromResult(data.user_corrections, data.fields);
+        this.initializeFromResult((data as any).analysis_result, data.fields);
       }
 
       // Auto-set to 'add' mode on target phase so user can immediately start picking fields
@@ -479,14 +486,6 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
 
     channel.bind('StepNavigationState', (data: StepNavigationStateEvent) => {
       this.handleStepNavigationEvent(data);
-    });
-
-    channel.bind('AnalysisCompleted', (data: any) => {
-      // Interactive analyze bootstrap failed before VNC was ready.
-      if (!this.vncUrl() && data?.error) {
-        this.loading.set(false);
-        this.initError.set(`Failed to initialize VNC session: ${data.error}`);
-      }
     });
 
     this.subs.push(

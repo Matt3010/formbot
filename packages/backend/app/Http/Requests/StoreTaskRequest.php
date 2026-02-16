@@ -19,13 +19,15 @@ class StoreTaskRequest extends FormRequest
      */
     public function rules(): array
     {
+        $isDraft = $this->input('status') === 'draft';
+
         return [
             'name' => ['required', 'string', 'max:255'],
-            'target_url' => ['required', 'url'],
+            'target_url' => $isDraft ? ['nullable', 'url'] : ['required', 'url'],
             'schedule_type' => ['sometimes', 'in:once,cron'],
             'schedule_cron' => ['nullable', 'string', 'max:100'],
             'schedule_at' => ['nullable', 'date'],
-            'status' => ['sometimes', 'in:draft,active,paused,completed,failed'],
+            'status' => ['sometimes', 'in:draft,editing,active,paused,completed,failed'],
             'is_dry_run' => ['sometimes', 'boolean'],
             'max_retries' => ['sometimes', 'integer', 'min:0', 'max:10'],
             'max_parallel' => ['sometimes', 'integer', 'min:1', 'max:10'],
@@ -36,11 +38,11 @@ class StoreTaskRequest extends FormRequest
             'login_url' => ['nullable', 'url', 'required_if:requires_login,true'],
             'login_every_time' => ['sometimes', 'boolean'],
 
-            // Nested form definitions
+            // Nested form definitions - more lenient for drafts
             'form_definitions' => ['sometimes', 'array'],
             'form_definitions.*.step_order' => ['required_with:form_definitions', 'integer'],
             'form_definitions.*.depends_on_step_order' => ['nullable', 'integer'],
-            'form_definitions.*.page_url' => ['required_with:form_definitions', 'string'],
+            'form_definitions.*.page_url' => $isDraft ? ['nullable', 'string'] : ['required_with:form_definitions', 'string'],
             'form_definitions.*.form_type' => ['required_with:form_definitions', 'in:login,intermediate,target'],
             'form_definitions.*.form_selector' => ['nullable', 'string'],
             'form_definitions.*.submit_selector' => ['nullable', 'string'],

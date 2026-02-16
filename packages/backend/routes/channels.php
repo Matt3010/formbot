@@ -15,3 +15,8 @@ Broadcast::channel('task.{taskId}', function ($user, $taskId) {
     $task = Task::find($taskId);
     return $task && $task->user_id === $user->id;
 });
+
+Broadcast::channel('analysis.{taskId}', function ($user, $taskId) {
+    $task = Task::find($taskId);
+    return $task && $task->user_id === $user->id;
+});

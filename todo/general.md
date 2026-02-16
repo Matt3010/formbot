@@ -102,7 +102,7 @@ o risolvere questo bug.
 Quando scrollo la pagina e ho selezionato precedentemente un tasto submit (forse succede anche con altri campi),
 l' highlight del campo è traslato rispetto l' elemento.
 
-!!!!This XML file does not appear to have any style information associated with it. The document tree is shown below.
+~~!!!!This XML file does not appear to have any style information associated with it. The document tree is shown below.
 <Error>
 <Code>SignatureDoesNotMatch</Code>
 <Message>The request signature we calculated does not match the signature you provided. Check your key and signing method.</Message>
@@ -111,7 +111,7 @@ l' highlight del campo è traslato rispetto l' elemento.
 <Resource>/formbot-screenshots/103/a1166828-0cf6-4617-831c-daddbdbaffbc_final.png</Resource>
 <RequestId>18947B4F8A18F205</RequestId>
 <HostId>dd9025bab4ad464b049177c95eb6ebf374d3b3fd1af9251148b658df7ac2e3e8</HostId>
-</Error>
+</Error>~~
 
 Cosa vuol dire filesystem legacy nelle stats su sezione screenshot? Se non serve toglierlo.
 

@@ -39,4 +39,4 @@ class Broadcaster:
     def trigger_task_editing(self, task_id: str, event: str, data: dict):
         """Broadcast a task editing event (private channel)."""
         data["task_id"] = str(task_id)
-        self.trigger(f"private-task.{task_id}", event, data)
+        self.trigger(f"private-analysis.{task_id}", event, data)

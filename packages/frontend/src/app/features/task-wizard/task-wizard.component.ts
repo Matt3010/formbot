@@ -337,16 +337,21 @@ export class TaskWizardComponent implements OnInit, OnDestroy {
     this.vncTaskId.set(taskId);
     this.vncAnalysisResult.set(null);
 
-    // Set target URL for login flow
+    // For login flows, start editing at the login URL; otherwise use target URL
+    let startingUrl: string | undefined;
+    let isLoginStep = false;
     if (this.requiresLogin()) {
       const targetUrl = this.stepUrl.urlControl.value;
       this.vncTargetUrl.set(targetUrl || null);
+      startingUrl = this.loginUrl() || undefined;
+      isLoginStep = true;
     } else {
       this.vncTargetUrl.set(null);
+      startingUrl = undefined;
     }
 
     // Start the VNC editing session
-    this.vncEditorService.startEditing(taskId).subscribe({
+    this.vncEditorService.startEditing(taskId, startingUrl, isLoginStep).subscribe({
       next: () => {
         this.notify.info('Starting visual editor...');
         this.resumingFromTask.set(true);
@@ -448,16 +453,20 @@ export class TaskWizardComponent implements OnInit, OnDestroy {
     const schedule = this.scheduleData();
     const options = this.taskOptions();
 
-    // For login-aware tasks, target_url should be the target page (not login page)
+    const configuredTargetUrl = this.stepUrl?.urlControl?.value || '';
+    const configuredLoginUrl = this.loginUrl() || this.stepUrl?.loginUrlControl?.value || '';
+
+    // For login-aware tasks, target_url should be the target page (not login page).
+    // Fallback to Step 1 URL controls to avoid empty payload URLs.
     const targetUrl = this.requiresLogin()
-      ? forms.find(f => f.form_type !== 'login')?.page_url || forms[0]?.page_url || ''
-      : forms[0]?.page_url || '';
+      ? forms.find(f => f.form_type !== 'login')?.page_url || configuredTargetUrl || forms[0]?.page_url || ''
+      : forms[0]?.page_url || configuredTargetUrl || '';
 
     // Transform forms: rename 'fields' to 'form_fields' for backend
     const formDefs = forms.map(f => ({
       step_order: f.step_order,
       depends_on_step_order: f.depends_on_step_order ?? null,
-      page_url: f.page_url,
+      page_url: f.page_url || (f.form_type === 'login' ? configuredLoginUrl : configuredTargetUrl),
       form_type: f.form_type,
       form_selector: f.form_selector || null,
       submit_selector: f.submit_selector || null,

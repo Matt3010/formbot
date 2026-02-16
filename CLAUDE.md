@@ -102,7 +102,7 @@ Key models with UUID primary keys:
 
 - `private-tasks.{userId}` — Task status changes
 - `private-execution.{executionId}` — Step-by-step execution progress
-- `private-analysis.{analysisId}` — VNC highlighting ready, field selection, login execution progress
+- `private-analysis.{taskId}` — VNC highlighting ready, field selection during form editing
 
 ## Service URLs (Development)
 

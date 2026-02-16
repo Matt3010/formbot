@@ -19,6 +19,7 @@ class TaskStatusChanged implements ShouldBroadcast
      */
     public function __construct(
         public Task $task,
+        public ?string $statusOverride = null,
     ) {}
 
     /**
@@ -46,7 +47,7 @@ class TaskStatusChanged implements ShouldBroadcast
         return [
             'id' => $this->task->id,
             'name' => $this->task->name,
-            'status' => $this->task->status,
+            'status' => $this->statusOverride ?? $this->task->status,
             'updated_at' => $this->task->updated_at?->toISOString(),
         ];
     }

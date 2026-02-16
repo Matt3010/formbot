@@ -135,8 +135,8 @@ class TaskController extends Controller
     {
         $this->authorizeTask($task);
 
-        $task->status = 'deleted';
-        event(new TaskStatusChanged($task));
+        // Broadcast deletion event before deleting
+        event(new TaskStatusChanged($task, 'deleted'));
 
         $task->delete();
 
@@ -318,11 +318,25 @@ class TaskController extends Controller
         // Allow URL override (e.g., login URL instead of target URL)
         $url = $request->input('url', $task->current_editing_url ?? $task->target_url);
 
+        // Accept explicit is_login_step flag from frontend, or try to detect it
+        $isLoginStep = $request->input('is_login_step', false) ||
+                       ($task->requires_login && $task->login_url && $url === $task->login_url);
+
+        // Debug logging
+        Log::info('Starting VNC editing', [
+            'task_id' => $task->id,
+            'url' => $url,
+            'is_login_step' => $isLoginStep,
+            'has_user_corrections' => !empty($task->user_corrections),
+            'user_corrections_steps' => !empty($task->user_corrections['steps']) ? count($task->user_corrections['steps']) : 0,
+        ]);
+
         try {
             $result = $scraperClient->startInteractiveTask(
                 url: $url,
                 taskId: $task->id,
                 userCorrections: $task->user_corrections,
+                isLoginStep: $isLoginStep,
             );
 
             $task->update([
@@ -358,10 +372,27 @@ class TaskController extends Controller
         }
 
         try {
+            $url = $task->current_editing_url ?? $task->target_url;
+
+            // When resuming, check if we're at a login step
+            $isLoginStep = false;
+            if ($task->requires_login && $task->login_url && $url === $task->login_url) {
+                $isLoginStep = true;
+            } elseif ($task->user_corrections && isset($task->user_corrections['steps'])) {
+                // Check if the current step in user_corrections is a login step
+                foreach ($task->user_corrections['steps'] as $step) {
+                    if ($step['page_url'] === $url && $step['form_type'] === 'login') {
+                        $isLoginStep = true;
+                        break;
+                    }
+                }
+            }
+
             $result = $scraperClient->startInteractiveTask(
-                url: $task->current_editing_url ?? $task->target_url,
+                url: $url,
                 taskId: $task->id,
                 userCorrections: $task->user_corrections,
+                isLoginStep: $isLoginStep,
             );
 
             $task->update([

@@ -62,6 +62,7 @@ def _make_mock_page(html_content: str = SIMPLE_LOGIN_HTML, has_password: bool = 
     page.goto = AsyncMock()
     page.wait_for_timeout = AsyncMock()
     page.wait_for_load_state = AsyncMock()
+    page.wait_for_function = AsyncMock()
     page.content = AsyncMock(return_value=html_content)
     page.screenshot = AsyncMock()
     page.fill = AsyncMock()

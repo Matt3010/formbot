@@ -7,8 +7,11 @@ import { EditorMode, UserCorrections, TestSelectorResult } from '../models/vnc-e
 export class VncEditorService {
   private api = inject(ApiService);
 
-  startEditing(taskId: string): Observable<any> {
-    return this.api.post(`/tasks/${taskId}/editing/start`);
+  startEditing(taskId: string, url?: string, isLoginStep?: boolean): Observable<any> {
+    const payload: any = {};
+    if (url) payload.url = url;
+    if (isLoginStep !== undefined) payload.is_login_step = isLoginStep;
+    return this.api.post(`/tasks/${taskId}/editing/start`, payload);
   }
 
   resumeEditing(taskId: string): Observable<any> {

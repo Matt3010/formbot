@@ -89,6 +89,35 @@ class TaskExecutor:
         if hasattr(self, '_user_id') and self._user_id and hasattr(self, '_execution_id') and self._execution_id:
             self.broadcaster.trigger_execution(self._user_id, str(self._execution_id), event, data)
 
+    async def _wait_for_post_submit_page_ready(self, page, previous_url: str) -> bool:
+        """After submit, wait until a new page/URL is ready when navigation happens.
+
+        Returns True if a URL change/navigation was detected, False otherwise.
+        """
+        navigation_detected = False
+
+        # Detect classic navigation or SPA route changes.
+        try:
+            await page.wait_for_function(
+                "prev => window.location.href !== prev",
+                previous_url,
+                timeout=10000,
+            )
+            navigation_detected = True
+        except Exception:
+            navigation_detected = False
+
+        if navigation_detected:
+            try:
+                await page.wait_for_load_state("load", timeout=15000)
+            except Exception:
+                # Best-effort: some pages never fully settle to "load".
+                pass
+
+        # Small settle time to avoid capturing mid-transition UI.
+        await page.wait_for_timeout(800)
+        return navigation_detected
+
     async def _vnc_pause(self, execution, steps_log, step_info, reason: str, browser) -> bool:
         """Activate VNC viewer and wait for user to resume.
 
@@ -403,12 +432,9 @@ class TaskExecutor:
 
                     # Submit form
                     try:
+                        previous_url = page.url
                         await page.click(form_def.submit_selector)
-                        try:
-                            await page.wait_for_load_state("load", timeout=15000)
-                        except Exception:
-                            await page.wait_for_timeout(2000)
-                        await page.wait_for_timeout(800)
+                        await self._wait_for_post_submit_page_ready(page, previous_url)
                         step_info["status"] = "submitted"
                     except Exception as e:
                         step_info["status"] = "submit_error"

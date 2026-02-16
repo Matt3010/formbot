@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Log;
 class ScreenshotStorage
 {
     private S3Client $client;
+    private S3Client $publicClient;
     private string $bucket;
     private int $presignedUrlExpiry;
     private string $internalEndpoint;
@@ -21,10 +22,23 @@ class ScreenshotStorage
         $this->bucket = config('minio.bucket');
         $this->presignedUrlExpiry = config('minio.presigned_url_expiry', 15);
 
+        // Client for internal operations (put, delete, list, etc.)
         $this->client = new S3Client([
             'version' => 'latest',
             'region' => config('minio.region', 'us-east-1'),
             'endpoint' => $this->internalEndpoint,
+            'use_path_style_endpoint' => config('minio.use_path_style', true),
+            'credentials' => [
+                'key' => config('minio.access_key'),
+                'secret' => config('minio.secret_key'),
+            ],
+        ]);
+
+        // Client for presigned URL generation (uses public endpoint)
+        $this->publicClient = new S3Client([
+            'version' => 'latest',
+            'region' => config('minio.region', 'us-east-1'),
+            'endpoint' => $this->publicUrl,
             'use_path_style_endpoint' => config('minio.use_path_style', true),
             'credentials' => [
                 'key' => config('minio.access_key'),
@@ -58,21 +72,15 @@ class ScreenshotStorage
     public function getPresignedUrl(string $key): ?string
     {
         try {
-            $cmd = $this->client->getCommand('GetObject', [
+            // Use publicClient so the signature is calculated with the correct public endpoint
+            $cmd = $this->publicClient->getCommand('GetObject', [
                 'Bucket' => $this->bucket,
                 'Key' => $key,
             ]);
 
-            $request = $this->client->createPresignedRequest($cmd, "+{$this->presignedUrlExpiry} minutes");
+            $request = $this->publicClient->createPresignedRequest($cmd, "+{$this->presignedUrlExpiry} minutes");
 
-            $presignedUrl = (string) $request->getUri();
-
-            // Replace internal endpoint with public URL if they differ
-            if ($this->publicUrl !== $this->internalEndpoint) {
-                $presignedUrl = str_replace($this->internalEndpoint, $this->publicUrl, $presignedUrl);
-            }
-
-            return $presignedUrl;
+            return (string) $request->getUri();
         } catch (AwsException $e) {
             Log::error("Failed to generate presigned URL: " . $e->getMessage());
             return null;

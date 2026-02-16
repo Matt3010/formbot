@@ -23,11 +23,13 @@ class InteractiveAnalyzeRequest(BaseModel):
     url: str
     task_id: str
     user_corrections: Optional[dict] = None
+    is_login_step: Optional[bool] = False
 
 
 @router.post("/analyze/interactive")
 async def analyze_url_interactive(request: InteractiveAnalyzeRequest):
     """Start interactive task editing with VNC — keeps browser open for field editing."""
+    print(f"[ANALYZE] Starting VNC session - URL: {request.url}, is_login_step: {request.is_login_step}", flush=True)
     vnc_manager = get_vnc_manager()
     registry = TaskEditingRegistry.get_instance()
 
@@ -68,17 +70,29 @@ async def analyze_url_interactive(request: InteractiveAnalyzeRequest):
             # Use existing user corrections or create empty structure
             if request.user_corrections:
                 user_data = request.user_corrections
+                print(f"[ANALYZE] Using existing user_corrections with {len(user_data.get('steps', []))} steps", flush=True)
+
+                # IMPORTANT: If this is a login step, override the first step's form_type and page_url
+                if request.is_login_step and user_data.get("steps"):
+                    first_step = user_data["steps"][0]
+                    if first_step.get("form_type") != "login" or first_step.get("page_url") != request.url:
+                        print(f"[ANALYZE] Fixing first step: form_type={first_step.get('form_type')} -> login, page_url={first_step.get('page_url')} -> {request.url}", flush=True)
+                        first_step["form_type"] = "login"
+                        first_step["page_url"] = request.url
             else:
+                # For new sessions, set form_type based on whether this is a login step
+                form_type = "login" if request.is_login_step else "target"
                 user_data = {
                     "steps": [{
                         "step_order": 0,
-                        "form_type": "target",
+                        "form_type": form_type,
                         "form_selector": "",
                         "submit_selector": "",
                         "fields": [],
                         "page_url": request.url,
                     }],
                 }
+                print(f"[ANALYZE] Created new step with form_type={form_type}, page_url={request.url}", flush=True)
 
             # Build fields list from steps
             fields = []
@@ -119,9 +133,7 @@ async def analyze_url_interactive(request: InteractiveAnalyzeRequest):
             return user_data
 
         except asyncio.CancelledError:
-            broadcaster.trigger_task_editing(request.task_id, "TaskEditingError", {
-                "error": "Cancelled by user",
-            })
+            print(f"[INTERACTIVE_EDITING] Cancelled by user for task {request.task_id}", flush=True)
         except Exception as e:
             import traceback
             print(f"[INTERACTIVE_EDITING] EXCEPTION: {e}\n{traceback.format_exc()}", flush=True)
@@ -143,9 +155,7 @@ async def analyze_url_interactive(request: InteractiveAnalyzeRequest):
                 except Exception:
                     pass
 
-            broadcaster.trigger_task_editing(request.task_id, "TaskEditingError", {
-                "error": str(e),
-            })
+            # Error already logged above in traceback
         finally:
             registry.unregister(request.task_id)
 

@@ -136,11 +136,12 @@ class ScraperClient
     /**
      * Start an interactive task editing session with VNC for field editing.
      */
-    public function startInteractiveTask(string $url, string $taskId, ?array $userCorrections = null): array
+    public function startInteractiveTask(string $url, string $taskId, ?array $userCorrections = null, bool $isLoginStep = false): array
     {
         $payload = [
             'url' => $url,
             'task_id' => $taskId,
+            'is_login_step' => $isLoginStep,
         ];
         if ($userCorrections) {
             $payload['user_corrections'] = $userCorrections;

@@ -200,7 +200,7 @@ export class WebSocketService {
         this.connect();
       }
 
-      const channelName = `private-task.${taskId}`;
+      const channelName = `private-analysis.${taskId}`;
       let channel = this.subscribedChannels.get(channelName);
       if (!channel) {
         channel = this.pusher.subscribe(channelName);
