@@ -156,13 +156,30 @@ class TaskExecutor:
         # Fallback: click happened but nothing changed; force native form submit if possible.
         if not navigation_detected and form_selector:
             submit_method = "click_then_request_submit"
-            await page.eval_on_selector(
-                form_selector,
-                "(form) => { if (form && typeof form.requestSubmit === 'function') form.requestSubmit(); else if (form) form.submit(); }",
+            submitted = await page.evaluate(
+                """({ formSelector, submitSelector }) => {
+                    const formEl = formSelector ? document.querySelector(formSelector) : null;
+                    const submitEl = submitSelector ? document.querySelector(submitSelector) : null;
+                    const form = formEl || (submitEl ? submitEl.closest('form') : null);
+                    if (!form) return false;
+                    if (typeof form.requestSubmit === 'function') form.requestSubmit();
+                    else form.submit();
+                    return true;
+                }""",
+                {"formSelector": form_selector, "submitSelector": submit_selector},
             )
-            navigation_detected = await self._wait_for_post_submit_page_ready(
-                page, previous_url, timeout_ms=wait_timeout_ms
-            )
+
+            if submitted:
+                navigation_detected = await self._wait_for_post_submit_page_ready(
+                    page, previous_url, timeout_ms=wait_timeout_ms
+                )
+            else:
+                # Last-resort fallback for stale selectors in dynamic pages.
+                submit_method = "click_then_enter"
+                await page.keyboard.press("Enter")
+                navigation_detected = await self._wait_for_post_submit_page_ready(
+                    page, previous_url, timeout_ms=wait_timeout_ms
+                )
 
         return submit_method, navigation_detected
 
