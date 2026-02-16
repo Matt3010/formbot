@@ -136,7 +136,7 @@ class TaskExecutor:
         submit_method = "click"
 
         if submit_selector:
-            await page.locator(submit_selector).first.click(timeout=8000)
+            await page.click(submit_selector)
             navigation_detected = await self._wait_for_post_submit_page_ready(
                 page, previous_url, timeout_ms=wait_timeout_ms
             )
