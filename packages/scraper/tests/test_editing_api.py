@@ -100,6 +100,12 @@ def _register_session(session=None):
     return session
 
 
+def _close_scheduled_coro(coro):
+    """Test helper: consume background coroutine without running it."""
+    coro.close()
+    return MagicMock()
+
+
 # ----- Test /editing/mode -----
 
 def test_set_mode_success():
@@ -494,15 +500,16 @@ async def test_registry_active_count():
 
 def test_execute_login_success():
     session = _register_session()
-    resp = client.post("/editing/execute-login", json={
-        "task_id": ANALYSIS_ID,
-        "login_fields": [
-            {"field_selector": "#username", "value": "user1"},
-            {"field_selector": "#password", "value": "pass1", "field_type": "password", "is_sensitive": True},
-        ],
-        "target_url": "https://example.com/dashboard",
-        "submit_selector": "button[type=submit]",
-    })
+    with patch("app.api.editing.asyncio.create_task", side_effect=_close_scheduled_coro):
+        resp = client.post("/editing/execute-login", json={
+            "task_id": ANALYSIS_ID,
+            "login_fields": [
+                {"field_selector": "#username", "value": "user1"},
+                {"field_selector": "#password", "value": "pass1", "field_type": "password", "is_sensitive": True},
+            ],
+            "target_url": "https://example.com/dashboard",
+            "submit_selector": "button[type=submit]",
+        })
     assert resp.status_code == 200
     assert resp.json()["status"] == "started"
 
@@ -580,10 +587,11 @@ def test_execute_login_creates_empty_result():
     """After login, execute-login always creates an empty result for the
     target page (no AI analysis)."""
     session = _register_session()
-    resp = client.post("/editing/execute-login", json={
-        "task_id": ANALYSIS_ID,
-        "login_fields": [],
-        "target_url": "https://example.com/dashboard",
-    })
+    with patch("app.api.editing.asyncio.create_task", side_effect=_close_scheduled_coro):
+        resp = client.post("/editing/execute-login", json={
+            "task_id": ANALYSIS_ID,
+            "login_fields": [],
+            "target_url": "https://example.com/dashboard",
+        })
     assert resp.status_code == 200
     assert resp.json()["status"] == "started"

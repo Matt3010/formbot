@@ -2,7 +2,7 @@
 
 import uuid
 import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import AsyncClient, ASGITransport
 
 # ---------------------------------------------------------------------------
@@ -15,6 +15,12 @@ def _get_app():
     return app
 
 
+def _close_scheduled_coro(coro):
+    """Test helper: consume background coroutine without running it."""
+    coro.close()
+    return MagicMock()
+
+
 # ---------------------------------------------------------------------------
 # POST /execute
 # ---------------------------------------------------------------------------
@@ -23,7 +29,7 @@ def _get_app():
 @pytest.mark.asyncio
 async def test_execute_endpoint_starts_background():
     """POST /execute returns immediately with status=started."""
-    with patch("app.api.execute.asyncio.create_task") as mock_create_task:
+    with patch("app.api.execute.asyncio.create_task", side_effect=_close_scheduled_coro) as mock_create_task:
         app = _get_app()
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as ac:
@@ -44,7 +50,7 @@ async def test_execute_endpoint_starts_background():
 @pytest.mark.asyncio
 async def test_execute_endpoint_with_all_options():
     """POST /execute accepts all optional parameters."""
-    with patch("app.api.execute.asyncio.create_task"):
+    with patch("app.api.execute.asyncio.create_task", side_effect=_close_scheduled_coro):
         app = _get_app()
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as ac:

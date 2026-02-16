@@ -299,6 +299,11 @@ class TaskController extends Controller
     {
         $this->authorizeTask($task);
 
+        $request->validate([
+            'url' => ['sometimes', 'url'],
+            'is_login_step' => ['sometimes', 'boolean'],
+        ]);
+
         if ($task->status !== 'editing' && $task->status !== 'draft') {
             return response()->json(['message' => 'Task must be in editing or draft status.'], 422);
         }
@@ -319,23 +324,28 @@ class TaskController extends Controller
         $url = $request->input('url', $task->current_editing_url ?? $task->target_url);
 
         // Accept explicit is_login_step flag from frontend, or try to detect it
-        $isLoginStep = $request->input('is_login_step', false) ||
+        $isLoginStep = $request->boolean('is_login_step') ||
                        ($task->requires_login && $task->login_url && $url === $task->login_url);
+
+        $userCorrections = $task->user_corrections;
+        $userCorrectionsSteps = (is_array($userCorrections) && isset($userCorrections['steps']) && is_array($userCorrections['steps']))
+            ? count($userCorrections['steps'])
+            : 0;
 
         // Debug logging
         Log::info('Starting VNC editing', [
             'task_id' => $task->id,
             'url' => $url,
             'is_login_step' => $isLoginStep,
-            'has_user_corrections' => !empty($task->user_corrections),
-            'user_corrections_steps' => !empty($task->user_corrections['steps']) ? count($task->user_corrections['steps']) : 0,
+            'has_user_corrections' => !empty($userCorrections),
+            'user_corrections_steps' => $userCorrectionsSteps,
         ]);
 
         try {
             $result = $scraperClient->startInteractiveTask(
                 url: $url,
                 taskId: $task->id,
-                userCorrections: $task->user_corrections,
+                userCorrections: is_array($userCorrections) ? $userCorrections : null,
                 isLoginStep: $isLoginStep,
             );
 
@@ -381,7 +391,7 @@ class TaskController extends Controller
             } elseif ($task->user_corrections && isset($task->user_corrections['steps'])) {
                 // Check if the current step in user_corrections is a login step
                 foreach ($task->user_corrections['steps'] as $step) {
-                    if ($step['page_url'] === $url && $step['form_type'] === 'login') {
+                    if (($step['page_url'] ?? null) === $url && ($step['form_type'] ?? null) === 'login') {
                         $isLoginStep = true;
                         break;
                     }
