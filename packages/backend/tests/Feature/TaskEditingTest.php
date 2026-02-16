@@ -154,6 +154,7 @@ class TaskEditingTest extends TestCase
             ->with(
                 Mockery::on(fn($url) => $url === 'https://example.com/login'),
                 Mockery::any(),
+                Mockery::any(),
                 Mockery::any()
             )
             ->andReturn(['status' => 'started']);
