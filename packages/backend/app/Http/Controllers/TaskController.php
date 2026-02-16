@@ -554,6 +554,12 @@ class TaskController extends Controller
 
         $request->validate([
             'login_fields' => ['required', 'array'],
+            'login_fields.*.field_selector' => ['required', 'string'],
+            'login_fields.*.field_name' => ['sometimes', 'string'],
+            'login_fields.*.value' => ['nullable', 'string'],
+            'login_fields.*.field_type' => ['sometimes', 'string'],
+            'login_fields.*.is_required' => ['sometimes', 'boolean'],
+            'login_fields.*.is_sensitive' => ['sometimes', 'boolean'],
             'target_url' => ['required', 'string'],
             'submit_selector' => ['sometimes', 'string'],
             'human_breakpoint' => ['sometimes', 'boolean'],

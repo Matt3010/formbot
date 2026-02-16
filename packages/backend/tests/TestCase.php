@@ -16,10 +16,4 @@ abstract class TestCase extends BaseTestCase
             $this->artisan('passport:keys', ['--force' => true, '--no-interaction' => true]);
         }
     }
-
-    protected function defineEnvironment($app): void
-    {
-        $app['config']->set('database.default', 'sqlite');
-        $app['config']->set('database.connections.sqlite.database', ':memory:');
-    }
 }

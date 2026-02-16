@@ -151,7 +151,7 @@ class SettingsTest extends TestCase
         $response = $this->getJson('/api/health');
 
         // Should return either 200 or 503 depending on actual service status.
-        // In testing with SQLite in-memory DB, the database should be connected.
+        // In tests we run against PostgreSQL, so the database should be connected.
         $response->assertJsonStructure([
             'status',
             'services' => ['database'],

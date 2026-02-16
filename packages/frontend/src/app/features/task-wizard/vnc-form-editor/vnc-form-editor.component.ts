@@ -946,9 +946,11 @@ export class VncFormEditorComponent implements OnInit, OnDestroy {
 
     // Collect login fields with their preset values
     const loginFields = step.fields.map(f => ({
+      field_name: f.field_name || '',
       field_selector: f.field_selector,
       value: f.preset_value || '',
       field_type: f.field_type,
+      is_required: f.is_required ?? false,
       is_sensitive: f.is_sensitive,
     }));
 

@@ -89,7 +89,7 @@ class TaskExecutor:
         if hasattr(self, '_user_id') and self._user_id and hasattr(self, '_execution_id') and self._execution_id:
             self.broadcaster.trigger_execution(self._user_id, str(self._execution_id), event, data)
 
-    async def _wait_for_post_submit_page_ready(self, page, previous_url: str) -> bool:
+    async def _wait_for_post_submit_page_ready(self, page, previous_url: str, timeout_ms: int = 10000) -> bool:
         """After submit, wait until a new page/URL is ready when navigation happens.
 
         Returns True if a URL change/navigation was detected, False otherwise.
@@ -101,7 +101,7 @@ class TaskExecutor:
             await page.wait_for_function(
                 "prev => window.location.href !== prev",
                 previous_url,
-                timeout=10000,
+                timeout=timeout_ms,
             )
             navigation_detected = True
         except Exception:
@@ -117,6 +117,54 @@ class TaskExecutor:
         # Small settle time to avoid capturing mid-transition UI.
         await page.wait_for_timeout(800)
         return navigation_detected
+
+    async def _submit_with_fallback(
+        self,
+        page,
+        form_selector: str | None,
+        submit_selector: str | None,
+        wait_timeout_ms: int = 10000,
+    ) -> tuple[str, bool]:
+        """Submit current form robustly.
+
+        Strategy:
+        - Click submit selector if available.
+        - If no navigation/change is detected and a form selector is available, call requestSubmit() as fallback.
+        Returns (submit_method, navigation_detected).
+        """
+        previous_url = page.url
+        submit_method = "click"
+
+        if submit_selector:
+            await page.locator(submit_selector).first.click(timeout=8000)
+            navigation_detected = await self._wait_for_post_submit_page_ready(
+                page, previous_url, timeout_ms=wait_timeout_ms
+            )
+        elif form_selector:
+            submit_method = "request_submit"
+            await page.eval_on_selector(
+                form_selector,
+                "(form) => { if (form && typeof form.requestSubmit === 'function') form.requestSubmit(); else if (form) form.submit(); }",
+            )
+            navigation_detected = await self._wait_for_post_submit_page_ready(
+                page, previous_url, timeout_ms=wait_timeout_ms
+            )
+            return submit_method, navigation_detected
+        else:
+            raise Exception("No submit_selector or form_selector available for submit")
+
+        # Fallback: click happened but nothing changed; force native form submit if possible.
+        if not navigation_detected and form_selector:
+            submit_method = "click_then_request_submit"
+            await page.eval_on_selector(
+                form_selector,
+                "(form) => { if (form && typeof form.requestSubmit === 'function') form.requestSubmit(); else if (form) form.submit(); }",
+            )
+            navigation_detected = await self._wait_for_post_submit_page_ready(
+                page, previous_url, timeout_ms=wait_timeout_ms
+            )
+
+        return submit_method, navigation_detected
 
     async def _vnc_pause(self, execution, steps_log, step_info, reason: str, browser) -> bool:
         """Activate VNC viewer and wait for user to resume.
@@ -431,14 +479,28 @@ class TaskExecutor:
                         }
 
                     # Submit form
+                    submit_exception = None
                     try:
-                        previous_url = page.url
-                        await page.click(form_def.submit_selector)
-                        await self._wait_for_post_submit_page_ready(page, previous_url)
-                        step_info["status"] = "submitted"
+                        url_before_submit = page.url
+                        submit_wait_timeout_ms = 45000 if is_last_step else 15000
+                        submit_method, navigation_detected = await self._submit_with_fallback(
+                            page,
+                            form_def.form_selector,
+                            form_def.submit_selector,
+                            wait_timeout_ms=submit_wait_timeout_ms,
+                        )
+                        url_after_submit = page.url
+                        step_info["status"] = "submitted" if navigation_detected else "submitted_no_navigation"
+                        step_info["submit_selector"] = form_def.submit_selector
+                        step_info["submit_method"] = submit_method
+                        step_info["navigation_detected"] = navigation_detected
+                        step_info["url_before_submit"] = url_before_submit
+                        step_info["url_after_submit"] = url_after_submit
                     except Exception as e:
                         step_info["status"] = "submit_error"
+                        step_info["submit_selector"] = form_def.submit_selector
                         step_info["error"] = str(e)
+                        submit_exception = e
 
                     # Only append if not already added by _vnc_pause
                     if not steps_log or steps_log[-1] is not step_info:
@@ -451,6 +513,9 @@ class TaskExecutor:
                         "total_steps": len(form_defs),
                         "status": step_info["status"],
                     })
+
+                    if submit_exception:
+                        raise submit_exception
 
                 # Wait for any final navigation to complete after last submit
                 try:

@@ -13,6 +13,27 @@ jobs:
   backend:
     name: Laravel Tests
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: formbot_test
+          POSTGRES_USER: formbot
+          POSTGRES_PASSWORD: formbot
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U formbot -d formbot_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DB_CONNECTION: pgsql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_DATABASE: formbot_test
+      DB_USERNAME: formbot
+      DB_PASSWORD: formbot
     defaults:
       run:
         working-directory: packages/backend
@@ -24,7 +45,7 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.2'
-          extensions: mbstring, pdo_sqlite, xml, ctype, json, tokenizer
+          extensions: mbstring, pgsql, pdo_pgsql, xml, ctype, json, tokenizer
           coverage: none
 
       - name: Get Composer cache directory

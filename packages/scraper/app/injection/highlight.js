@@ -182,12 +182,52 @@
    * Generate a unique CSS selector for an element.
    */
   function generateSelector(el) {
+    function isUnique(sel) {
+      try {
+        return document.querySelectorAll(sel).length === 1;
+      } catch (e) {
+        return false;
+      }
+    }
+
     if (el.id) return '#' + CSS.escape(el.id);
+
+    // Prefer stable testing/accessibility attributes when available.
+    var stableAttrs = ['data-testid', 'data-test', 'aria-label', 'name'];
+    for (var i = 0; i < stableAttrs.length; i++) {
+      var attr = stableAttrs[i];
+      var attrVal = el.getAttribute(attr);
+      if (!attrVal) continue;
+      var tagWithAttr = el.tagName.toLowerCase() + '[' + attr + '="' + CSS.escape(attrVal) + '"]';
+      if (isUnique(tagWithAttr)) return tagWithAttr;
+    }
 
     if (el.name) {
       var tag = el.tagName.toLowerCase();
       var sel = tag + '[name="' + el.name + '"]';
-      if (document.querySelectorAll(sel).length === 1) return sel;
+      if (isUnique(sel)) return sel;
+      if (el.type) {
+        var typedSel = sel + '[type="' + CSS.escape(el.type) + '"]';
+        if (isUnique(typedSel)) return typedSel;
+      }
+    }
+
+    // Prefer form-scoped selectors when possible.
+    var parentForm = el.tagName && el.tagName.toLowerCase() !== 'form' ? el.closest('form') : null;
+    if (parentForm) {
+      var formSel = generateSelector(parentForm);
+      if (el.name) {
+        var inFormByName = formSel + ' ' + el.tagName.toLowerCase() + '[name="' + CSS.escape(el.name) + '"]';
+        if (isUnique(inFormByName)) return inFormByName;
+      }
+      if (el.type && (el.tagName.toLowerCase() === 'button' || el.tagName.toLowerCase() === 'input')) {
+        var submitInForm = formSel + ' ' + el.tagName.toLowerCase() + '[type="' + CSS.escape(el.type) + '"]';
+        var inFormCount = 0;
+        try {
+          inFormCount = document.querySelectorAll(submitInForm).length;
+        } catch (e) {}
+        if (inFormCount === 1) return submitInForm;
+      }
     }
 
     // Fallback: build path
@@ -196,8 +236,7 @@
     while (current && current !== document.body) {
       var tag = current.tagName.toLowerCase();
       if (current.id) {
-        path.unshift('#' + CSS.escape(current.id) + ' > ' + path[0]);
-        return path.join(' > ');
+        return '#' + CSS.escape(current.id) + (path.length ? ' > ' + path.join(' > ') : '');
       }
       var parent = current.parentElement;
       if (parent) {

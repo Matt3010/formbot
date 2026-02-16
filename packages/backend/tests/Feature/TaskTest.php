@@ -135,17 +135,8 @@ class TaskTest extends TestCase
             ->assertJsonPath('data.0.name', 'Active Task');
     }
 
-    /**
-     * Note: The search feature uses PostgreSQL's `ilike` operator which is not
-     * supported by SQLite. This test is marked to run only when a PostgreSQL
-     * connection is configured. In SQLite-based test runs this test is skipped.
-     */
     public function test_list_tasks_can_search_by_name(): void
     {
-        if (config('database.default') === 'sqlite') {
-            $this->markTestSkipped('Search uses PostgreSQL ilike operator which is not supported by SQLite.');
-        }
-
         $this->createTask(['name' => 'Login Automation']);
         $this->createTask(['name' => 'Invoice Download']);
 

@@ -214,8 +214,10 @@ async def navigate_step(request: NavigateRequest):
 
 class LoginFieldPayload(BaseModel):
     field_selector: str
+    field_name: Optional[str] = ""
     value: Optional[str] = ""
     field_type: Optional[str] = "text"
+    is_required: Optional[bool] = False
     is_sensitive: Optional[bool] = False
 
 
@@ -244,6 +246,28 @@ async def execute_login(request: ExecuteLoginRequest):
         page = session.page
         task_id = request.task_id
 
+        async def _wait_post_submit(previous_url: str) -> bool:
+            """Wait for page to settle after submit and detect URL change."""
+            navigation_detected = False
+            try:
+                await page.wait_for_function(
+                    "prev => window.location.href !== prev",
+                    previous_url,
+                    timeout=10000,
+                )
+                navigation_detected = True
+            except Exception:
+                navigation_detected = False
+
+            if navigation_detected:
+                try:
+                    await page.wait_for_load_state("load", timeout=15000)
+                except Exception:
+                    pass
+
+            await page.wait_for_timeout(800)
+            return navigation_detected
+
         # Helper function to DRY up manual intervention pauses
         async def _pause_for_human(phase_name: str, message_text: str):
             broadcaster.trigger_task_editing(task_id, "LoginExecutionProgress", {
@@ -266,6 +290,7 @@ async def execute_login(request: ExecuteLoginRequest):
             })
 
             submit_field_selector = None
+            fill_errors: list[str] = []
             for field in request.login_fields:
                 if field.field_type in ("submit", "button"):
                     submit_field_selector = field.field_selector
@@ -286,8 +311,15 @@ async def execute_login(request: ExecuteLoginRequest):
                         await el.fill(field_value)
 
                     await page.wait_for_timeout(200)
-                except Exception:
-                    pass  # Silently skip fields that fail to fill
+                except Exception as e:
+                    value_present = bool((field.value or "").strip())
+                    if field.is_required or value_present:
+                        field_label = field.field_name or field.field_selector
+                        fill_errors.append(f"{field_label}: {str(e)}")
+
+            if fill_errors:
+                joined = "; ".join(fill_errors[:5])
+                raise Exception(f"Failed to fill required login fields ({len(fill_errors)}): {joined}")
 
             # Phase: submitting
             broadcaster.trigger_task_editing(task_id, "LoginExecutionProgress", {
@@ -302,27 +334,41 @@ async def execute_login(request: ExecuteLoginRequest):
             except Exception:
                 pass
 
+            submit_method = "keyboard_enter"
+            navigation_detected = False
+            previous_url = page.url
             if effective_submit:
+                submit_method = "click"
                 try:
                     await page.locator(effective_submit).first.click(timeout=5000)
                 except Exception:
-                    try:
-                        await page.locator(effective_submit).first.click(force=True, timeout=5000)
-                    except Exception:
-                        await page.evaluate(f"document.querySelector('{effective_submit}').click()")
+                    await page.locator(effective_submit).first.click(force=True, timeout=5000)
+                navigation_detected = await _wait_post_submit(previous_url)
+
+                if not navigation_detected:
+                    # Fallback to native submit path on the parent form.
+                    submit_method = "click_then_request_submit"
+                    await page.eval_on_selector(
+                        effective_submit,
+                        """(el) => {
+                            const form = el?.closest?.('form');
+                            if (form && typeof form.requestSubmit === 'function') form.requestSubmit();
+                            else if (form) form.submit();
+                            else if (el?.click) el.click();
+                        }""",
+                    )
+                    navigation_detected = await _wait_post_submit(previous_url)
             else:
                 await page.keyboard.press("Enter")
+                navigation_detected = await _wait_post_submit(previous_url)
 
             # Allow time for cookies and redirects
             broadcaster.trigger_task_editing(task_id, "LoginExecutionProgress", {
                 "phase": "waiting_redirect",
                 "message": "Waiting for page redirect...",
+                "submit_method": submit_method,
+                "navigation_detected": navigation_detected,
             })
-            try:
-                await page.wait_for_load_state("load", timeout=15000)
-            except Exception:
-                pass
-            await page.wait_for_timeout(800)
 
             # Manual Interventions
             if request.human_breakpoint:
