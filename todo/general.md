@@ -81,8 +81,8 @@ rimane prima che la sessione scada, in modo da evitare perdite di dati o interru
 in modo da avere un controllo più granulare sui processi di analisi e permettere
 agli utenti di intervenire in momenti specifici del flusso di lavoro.
 
-I test attualmente girano su sqlite, sarebbe bello usare pgsql cosi non è necessario fare una implementazione ad hoc 
-per sqlite.
+~~!I test attualmente girano su sqlite, sarebbe bello usare pgsql cosi non è necessario fare una implementazione ad hoc 
+per sqlite.~~!
 
 ~~!!!!!Differenza tra analysis e tasks? mi serve questa differenza?
 Possiamo anche pensare di togliere le analysis da tutta l'infrastruttura e lasciare solo le tasks (se si cancella una task si perde la sessione e si ricomincia da capo), 

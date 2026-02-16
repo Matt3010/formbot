@@ -19,6 +19,28 @@ from app.config import settings
 router = APIRouter()
 
 
+async def _wait_for_render_ready(page, timeout_ms: int = 3000) -> None:
+    """Wait for paint-ready DOM; timeout acts only as a guardrail."""
+    try:
+        await page.wait_for_function(
+            """() => {
+                if (!document.body) return false;
+                const state = document.readyState;
+                return state === 'interactive' || state === 'complete';
+            }""",
+            timeout=timeout_ms,
+        )
+    except Exception:
+        return
+
+    try:
+        await page.evaluate(
+            "() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))"
+        )
+    except Exception:
+        pass
+
+
 class InteractiveAnalyzeRequest(BaseModel):
     url: str
     task_id: str
@@ -65,7 +87,7 @@ async def analyze_url_interactive(request: InteractiveAnalyzeRequest):
             except Exception:
                 # Best effort only.
                 pass
-            await page.wait_for_timeout(1000)
+            await _wait_for_render_ready(page, timeout_ms=3000)
 
             # Use existing user corrections or create empty structure
             if request.user_corrections:

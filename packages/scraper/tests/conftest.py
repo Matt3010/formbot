@@ -59,11 +59,16 @@ def _make_mock_page(html_content: str = SIMPLE_LOGIN_HTML, has_password: bool = 
     password-related selectors so that ``_detect_login_heuristic`` sees a login page.
     """
     page = AsyncMock()
+    page.url = "https://example.com/login"
+    page.main_frame = MagicMock()
     page.goto = AsyncMock()
     page.wait_for_timeout = AsyncMock()
     page.wait_for_load_state = AsyncMock()
     page.wait_for_function = AsyncMock()
+    page.wait_for_url = AsyncMock()
+    page.wait_for_event = AsyncMock()
     page.content = AsyncMock(return_value=html_content)
+    page.evaluate = AsyncMock(return_value="")
     page.screenshot = AsyncMock()
     page.fill = AsyncMock()
     page.click = AsyncMock()
@@ -75,6 +80,8 @@ def _make_mock_page(html_content: str = SIMPLE_LOGIN_HTML, has_password: bool = 
     page.wait_for_selector = AsyncMock()
     page.query_selector = AsyncMock(return_value=MagicMock())  # non-None element
     page.add_init_script = AsyncMock()
+    page.keyboard = MagicMock()
+    page.keyboard.press = AsyncMock()
 
     # Mock locator().count() for _detect_login_heuristic
     locator_mock = AsyncMock()

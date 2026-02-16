@@ -174,7 +174,9 @@ async def test_execute_simple_single_form(mock_db, mock_vnc_manager):
     assert fill_calls[1][0] == ("#password", "secret")
 
     # Verify submit was clicked
-    page.click.assert_awaited_once_with("#submit-btn")
+    page.click.assert_awaited_once()
+    assert page.click.call_args[0][0] == "#submit-btn"
+    assert page.click.call_args[1]["no_wait_after"] is True
 
     # Verify screenshot taken
     page.screenshot.assert_awaited_once()
@@ -451,7 +453,9 @@ async def test_execute_with_breakpoint_triggers_post_submit_vnc(mock_db):
     assert result["status"] == "success"
 
     # Submit was clicked (manual intervention pause is POST-submit)
-    page.click.assert_awaited_once_with("#submit")
+    page.click.assert_awaited_once()
+    assert page.click.call_args[0][0] == "#submit"
+    assert page.click.call_args[1]["no_wait_after"] is True
 
     # VNC display was reserved and activated for manual intervention
     vnc_mock.reserve_display.assert_awaited_once()
@@ -865,7 +869,9 @@ async def test_execute_dry_run_multi_step(mock_db, mock_vnc_manager):
     assert result["status"] == "dry_run_ok"
 
     # First step's submit WAS clicked (dry run only skips the last step)
-    page.click.assert_awaited_once_with("#login-btn")
+    page.click.assert_awaited_once()
+    assert page.click.call_args[0][0] == "#login-btn"
+    assert page.click.call_args[1]["no_wait_after"] is True
 
     # Screenshot was taken
     page.screenshot.assert_awaited_once()

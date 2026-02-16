@@ -171,7 +171,10 @@ class FieldHighlighter:
     async def _reinject(self) -> None:
         """Re-inject highlight.js after a page navigation."""
         try:
-            await self.page.wait_for_timeout(500)
+            try:
+                await self.page.wait_for_load_state("domcontentloaded", timeout=3000)
+            except Exception:
+                pass
             await self.inject()
         except Exception:
             pass

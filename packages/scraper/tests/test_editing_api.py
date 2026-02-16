@@ -34,9 +34,28 @@ SAMPLE_FIELDS = [
 def _make_mock_session(task_id: str = ANALYSIS_ID) -> HighlighterSession:
     """Create a mock HighlighterSession."""
     page = AsyncMock()
+    page.url = "https://example.com/login"
+    page.main_frame = MagicMock()
     page.evaluate = AsyncMock(return_value={"found": True, "matchCount": 1})
     page.goto = AsyncMock()
     page.wait_for_timeout = AsyncMock()
+    page.wait_for_load_state = AsyncMock()
+    page.wait_for_function = AsyncMock()
+    page.wait_for_url = AsyncMock()
+    page.wait_for_event = AsyncMock()
+    page.eval_on_selector = AsyncMock()
+    page.query_selector = AsyncMock(return_value=MagicMock())
+    page.keyboard = MagicMock()
+    page.keyboard.press = AsyncMock()
+
+    locator = AsyncMock()
+    locator.first = locator
+    locator.click = AsyncMock()
+    locator.fill = AsyncMock()
+    locator.check = AsyncMock()
+    locator.uncheck = AsyncMock()
+    locator.select_option = AsyncMock()
+    page.locator = MagicMock(return_value=locator)
 
     highlighter = AsyncMock(spec=FieldHighlighter)
     highlighter.set_mode = AsyncMock()

@@ -89,23 +89,64 @@ class TaskExecutor:
         if hasattr(self, '_user_id') and self._user_id and hasattr(self, '_execution_id') and self._execution_id:
             self.broadcaster.trigger_execution(self._user_id, str(self._execution_id), event, data)
 
-    async def _wait_for_post_submit_page_ready(self, page, previous_url: str, timeout_ms: int = 10000) -> bool:
+    async def _wait_for_render_ready(self, page, timeout_ms: int = 3000) -> None:
+        """Wait until the current document is paint-ready.
+
+        This is event-driven and avoids fixed sleeps; timeout is only a guardrail.
+        """
+        try:
+            await page.wait_for_function(
+                """() => {
+                    if (!document.body) return false;
+                    const state = document.readyState;
+                    return state === 'interactive' || state === 'complete';
+                }""",
+                timeout=timeout_ms,
+            )
+        except Exception:
+            return
+
+        try:
+            await page.evaluate(
+                "() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))"
+            )
+        except Exception:
+            pass
+
+    async def _wait_for_post_submit_page_ready(
+        self,
+        page,
+        previous_url: str,
+        previous_dom_marker: str | None = None,
+        timeout_ms: int = 10000,
+    ) -> bool:
         """After submit, wait until a new page/URL is ready when navigation happens.
 
         Returns True if a URL change/navigation was detected, False otherwise.
         """
         navigation_detected = False
 
-        # Detect classic navigation or SPA route changes.
+        # Detect classic navigation or SPA route changes reliably across reloads.
         try:
-            await page.wait_for_function(
-                "prev => window.location.href !== prev",
-                previous_url,
+            await page.wait_for_url(
+                lambda url: url != previous_url,
                 timeout=timeout_ms,
             )
             navigation_detected = True
         except Exception:
             navigation_detected = False
+
+        # Some transitions reload/navigate while keeping the same URL.
+        if not navigation_detected:
+            try:
+                await page.wait_for_event(
+                    "framenavigated",
+                    predicate=lambda frame: frame == page.main_frame,
+                    timeout=min(timeout_ms, 12000),
+                )
+                navigation_detected = True
+            except Exception:
+                navigation_detected = False
 
         if navigation_detected:
             try:
@@ -114,9 +155,32 @@ class TaskExecutor:
                 # Best-effort: some pages never fully settle to "load".
                 pass
 
-        # Small settle time to avoid capturing mid-transition UI.
-        await page.wait_for_timeout(800)
-        return navigation_detected
+            await self._wait_for_render_ready(page, timeout_ms=min(timeout_ms, 5000))
+            return True
+
+        # URL didn't change and no frame navigation event: detect in-page DOM transition.
+        dom_transition_detected = False
+        if previous_dom_marker is not None:
+            try:
+                await page.wait_for_function(
+                    """(before) => {
+                        const current = (document.body && document.body.innerText)
+                          ? document.body.innerText.slice(0, 4000)
+                          : '';
+                        return current !== before;
+                    }""",
+                    previous_dom_marker,
+                    timeout=min(timeout_ms, 12000),
+                )
+                dom_transition_detected = True
+            except Exception:
+                dom_transition_detected = False
+
+        if dom_transition_detected:
+            await self._wait_for_render_ready(page, timeout_ms=min(timeout_ms, 3000))
+            return True
+
+        return False
 
     async def _submit_with_fallback(
         self,
@@ -134,20 +198,47 @@ class TaskExecutor:
         """
         previous_url = page.url
         submit_method = "click"
+        previous_dom_marker = None
+        try:
+            previous_dom_marker = await page.evaluate(
+                "() => (document.body && document.body.innerText) ? document.body.innerText.slice(0, 4000) : ''"
+            )
+        except Exception:
+            previous_dom_marker = None
 
         if submit_selector:
-            await page.click(submit_selector)
+            try:
+                # Playwright can complete the click, then stall while waiting for
+                # "scheduled navigations". Bound this wait so execution can continue
+                # with our explicit post-submit navigation checks.
+                await asyncio.wait_for(page.click(submit_selector, no_wait_after=True), timeout=8)
+            except asyncio.TimeoutError:
+                submit_method = "click_timeout_waiting_navigation"
             navigation_detected = await self._wait_for_post_submit_page_ready(
-                page, previous_url, timeout_ms=wait_timeout_ms
+                page,
+                previous_url,
+                previous_dom_marker=previous_dom_marker,
+                timeout_ms=wait_timeout_ms,
             )
         elif form_selector:
             submit_method = "request_submit"
-            await page.eval_on_selector(
+            submitted = await page.evaluate(
+                """(formSelector) => {
+                    const form = formSelector ? document.querySelector(formSelector) : null;
+                    if (!form) return false;
+                    if (typeof form.requestSubmit === 'function') form.requestSubmit();
+                    else form.submit();
+                    return true;
+                }""",
                 form_selector,
-                "(form) => { if (form && typeof form.requestSubmit === 'function') form.requestSubmit(); else if (form) form.submit(); }",
             )
+            if not submitted:
+                raise Exception(f"Form selector '{form_selector}' not found for submit")
             navigation_detected = await self._wait_for_post_submit_page_ready(
-                page, previous_url, timeout_ms=wait_timeout_ms
+                page,
+                previous_url,
+                previous_dom_marker=previous_dom_marker,
+                timeout_ms=wait_timeout_ms,
             )
             return submit_method, navigation_detected
         else:
@@ -171,14 +262,20 @@ class TaskExecutor:
 
             if submitted:
                 navigation_detected = await self._wait_for_post_submit_page_ready(
-                    page, previous_url, timeout_ms=wait_timeout_ms
+                    page,
+                    previous_url,
+                    previous_dom_marker=previous_dom_marker,
+                    timeout_ms=wait_timeout_ms,
                 )
             else:
                 # Last-resort fallback for stale selectors in dynamic pages.
                 submit_method = "click_then_enter"
                 await page.keyboard.press("Enter")
                 navigation_detected = await self._wait_for_post_submit_page_ready(
-                    page, previous_url, timeout_ms=wait_timeout_ms
+                    page,
+                    previous_url,
+                    previous_dom_marker=previous_dom_marker,
+                    timeout_ms=wait_timeout_ms,
                 )
 
         return submit_method, navigation_detected
@@ -371,7 +468,7 @@ class TaskExecutor:
                         await page.wait_for_load_state("load", timeout=15000)
                     except Exception:
                         pass
-                    await page.wait_for_timeout(800)
+                    await self._wait_for_render_ready(page, timeout_ms=3000)
 
                     step_info["navigated"] = True
 
@@ -426,8 +523,9 @@ class TaskExecutor:
                             else:
                                 await page.fill(field.field_selector, value)
 
-                            # Wait between actions
-                            await page.wait_for_timeout(action_delay_ms)
+                            # Optional user-configured pacing delay.
+                            if action_delay_ms and action_delay_ms > 0:
+                                await page.wait_for_timeout(action_delay_ms)
 
                             # Broadcast field filled
                             self._broadcast("execution.field_filled", {
@@ -539,7 +637,7 @@ class TaskExecutor:
                     await page.wait_for_load_state("load", timeout=15000)
                 except Exception:
                     pass
-                await page.wait_for_timeout(1000)
+                await self._wait_for_render_ready(page, timeout_ms=5000)
 
                 # Take final screenshot
                 screenshot_name = f"{execution.id}_final.png"

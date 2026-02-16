@@ -70,6 +70,121 @@ def _assert_session_command_ready(session) -> None:
         raise HTTPException(status_code=409, detail="Step navigation already in progress")
 
 
+async def _wait_for_next_paint(page) -> None:
+    """Yield until at least one browser paint has happened."""
+    try:
+        await page.evaluate(
+            "() => new Promise((resolve) => requestAnimationFrame(resolve))"
+        )
+    except Exception:
+        pass
+
+
+async def _wait_for_render_ready(page, timeout_ms: int = 3000) -> None:
+    """Wait for a paint-ready DOM without relying on fixed sleeps."""
+    try:
+        await page.wait_for_function(
+            """() => {
+                if (!document.body) return false;
+                const state = document.readyState;
+                return state === 'interactive' || state === 'complete';
+            }""",
+            timeout=timeout_ms,
+        )
+    except Exception:
+        return
+
+    try:
+        await page.evaluate(
+            "() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))"
+        )
+    except Exception:
+        pass
+
+
+async def _capture_dom_marker(page) -> dict | None:
+    """Capture a compact DOM marker used to detect same-URL transitions."""
+    try:
+        return await page.evaluate(
+            """() => {
+                const body = document.body;
+                const text = body ? body.innerText.slice(0, 4000) : '';
+                const htmlLength = body ? body.innerHTML.length : 0;
+                return {
+                    text,
+                    htmlLength,
+                    title: document.title || '',
+                    path: window.location.pathname + window.location.search + window.location.hash,
+                };
+            }"""
+        )
+    except Exception:
+        return None
+
+
+async def _wait_for_post_submit(
+    page,
+    previous_url: str,
+    previous_dom_marker: dict | None,
+    timeout_ms: int = 10000,
+) -> bool:
+    """Wait for submit side-effects: URL/frame nav, or same-URL DOM transition."""
+    navigation_detected = False
+    try:
+        await page.wait_for_url(
+            lambda url: url != previous_url,
+            timeout=timeout_ms,
+        )
+        navigation_detected = True
+    except Exception:
+        navigation_detected = False
+
+    if not navigation_detected:
+        try:
+            await page.wait_for_event(
+                "framenavigated",
+                predicate=lambda frame: frame == page.main_frame,
+                timeout=min(timeout_ms, 12000),
+            )
+            navigation_detected = True
+        except Exception:
+            navigation_detected = False
+
+    if navigation_detected:
+        try:
+            await page.wait_for_load_state("load", timeout=15000)
+        except Exception:
+            pass
+        await _wait_for_render_ready(page, timeout_ms=min(timeout_ms, 5000))
+        return True
+
+    if previous_dom_marker is not None:
+        try:
+            await page.wait_for_function(
+                """(before) => {
+                    const body = document.body;
+                    const text = body ? body.innerText.slice(0, 4000) : '';
+                    const htmlLength = body ? body.innerHTML.length : 0;
+                    const title = document.title || '';
+                    const path = window.location.pathname + window.location.search + window.location.hash;
+                    return (
+                        text !== before.text ||
+                        htmlLength !== before.htmlLength ||
+                        title !== before.title ||
+                        path !== before.path
+                    );
+                }""",
+                previous_dom_marker,
+                timeout=min(timeout_ms, 12000),
+            )
+            await _wait_for_render_ready(page, timeout_ms=min(timeout_ms, 3000))
+            return True
+        except Exception:
+            pass
+
+    return False
+
+
 @router.post("/mode")
 async def set_mode(request: SetModeRequest):
     """Set the interaction mode (select/add/remove)."""
@@ -184,7 +299,7 @@ async def navigate_step(request: NavigateRequest):
         except Exception:
             # Best effort only: some pages never reach "load" cleanly.
             pass
-        await session.page.wait_for_timeout(800)
+        await _wait_for_render_ready(session.page, timeout_ms=3000)
 
         final_url = getattr(session.page, "url", None)
         if not isinstance(final_url, str) or not final_url:
@@ -246,28 +361,6 @@ async def execute_login(request: ExecuteLoginRequest):
         page = session.page
         task_id = request.task_id
 
-        async def _wait_post_submit(previous_url: str) -> bool:
-            """Wait for page to settle after submit and detect URL change."""
-            navigation_detected = False
-            try:
-                await page.wait_for_function(
-                    "prev => window.location.href !== prev",
-                    previous_url,
-                    timeout=10000,
-                )
-                navigation_detected = True
-            except Exception:
-                navigation_detected = False
-
-            if navigation_detected:
-                try:
-                    await page.wait_for_load_state("load", timeout=15000)
-                except Exception:
-                    pass
-
-            await page.wait_for_timeout(800)
-            return navigation_detected
-
         # Helper function to DRY up manual intervention pauses
         async def _pause_for_human(phase_name: str, message_text: str):
             broadcaster.trigger_task_editing(task_id, "LoginExecutionProgress", {
@@ -280,7 +373,11 @@ async def execute_login(request: ExecuteLoginRequest):
             try:
                 await page.wait_for_load_state("load", timeout=12000)
             except Exception:
-                await page.wait_for_timeout(3000)
+                try:
+                    await page.wait_for_load_state("domcontentloaded", timeout=5000)
+                except Exception:
+                    pass
+            await _wait_for_render_ready(page, timeout_ms=3000)
 
         try:
             # Phase: filling
@@ -310,7 +407,7 @@ async def execute_login(request: ExecuteLoginRequest):
                         await el.click()
                         await el.fill(field_value)
 
-                    await page.wait_for_timeout(200)
+                    await _wait_for_next_paint(page)
                 except Exception as e:
                     value_present = bool((field.value or "").strip())
                     if field.is_required or value_present:
@@ -337,30 +434,66 @@ async def execute_login(request: ExecuteLoginRequest):
             submit_method = "keyboard_enter"
             navigation_detected = False
             previous_url = page.url
+            previous_dom_marker = await _capture_dom_marker(page)
             if effective_submit:
                 submit_method = "click"
                 try:
-                    await page.locator(effective_submit).first.click(timeout=5000)
+                    await asyncio.wait_for(
+                        page.locator(effective_submit).first.click(timeout=5000, no_wait_after=True),
+                        timeout=8,
+                    )
                 except Exception:
-                    await page.locator(effective_submit).first.click(force=True, timeout=5000)
-                navigation_detected = await _wait_post_submit(previous_url)
+                    submit_method = "click_force"
+                    await asyncio.wait_for(
+                        page.locator(effective_submit).first.click(force=True, timeout=5000, no_wait_after=True),
+                        timeout=8,
+                    )
+                navigation_detected = await _wait_for_post_submit(
+                    page,
+                    previous_url,
+                    previous_dom_marker,
+                    timeout_ms=10000,
+                )
 
                 if not navigation_detected:
                     # Fallback to native submit path on the parent form.
                     submit_method = "click_then_request_submit"
-                    await page.eval_on_selector(
-                        effective_submit,
-                        """(el) => {
-                            const form = el?.closest?.('form');
+                    submitted = await page.evaluate(
+                        """(submitSelector) => {
+                            const el = submitSelector ? document.querySelector(submitSelector) : null;
+                            if (!el) return false;
+                            const form = el.closest?.('form');
                             if (form && typeof form.requestSubmit === 'function') form.requestSubmit();
                             else if (form) form.submit();
-                            else if (el?.click) el.click();
+                            else if (el.click) el.click();
+                            return true;
                         }""",
+                        effective_submit,
                     )
-                    navigation_detected = await _wait_post_submit(previous_url)
+                    if submitted:
+                        navigation_detected = await _wait_for_post_submit(
+                            page,
+                            previous_url,
+                            previous_dom_marker,
+                            timeout_ms=10000,
+                        )
+                    else:
+                        submit_method = "click_then_enter"
+                        await page.keyboard.press("Enter")
+                        navigation_detected = await _wait_for_post_submit(
+                            page,
+                            previous_url,
+                            previous_dom_marker,
+                            timeout_ms=10000,
+                        )
             else:
                 await page.keyboard.press("Enter")
-                navigation_detected = await _wait_post_submit(previous_url)
+                navigation_detected = await _wait_for_post_submit(
+                    page,
+                    previous_url,
+                    previous_dom_marker,
+                    timeout_ms=10000,
+                )
 
             # Allow time for cookies and redirects
             broadcaster.trigger_task_editing(task_id, "LoginExecutionProgress", {
@@ -387,7 +520,7 @@ async def execute_login(request: ExecuteLoginRequest):
                 await page.wait_for_load_state("load", timeout=15000)
             except Exception:
                 pass
-            await page.wait_for_timeout(800)
+            await _wait_for_render_ready(page, timeout_ms=3000)
 
             broadcaster.trigger_task_editing(task_id, "LoginExecutionProgress", {
                 "phase": "loading_target",
